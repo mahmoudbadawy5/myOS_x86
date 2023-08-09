@@ -3,11 +3,12 @@
 Trying to make a simple operating system for fun.
 
 ## Steps
+
 ~~1. Following Bran's tutorial for the base of the kernel (Done)~~
 
 ~~2. Adding more printing methods + printf~~
 
-3. Adding a memory manager
+~~3. Adding a memory manager~~
 
 4. Enabling paging
 

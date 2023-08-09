@@ -1,11 +1,13 @@
 #include <vga.h>
 #include <stdio.h>
+#include <mem/phys_mem.h>
 
-char *buf;
+char *buf = 0;
 
 void print_uint(unsigned int val, int base, int size)
 {
-    buf = (char *)0x32674;
+    if (!buf)
+        buf = (char *)alloc_blocks(1);
     int cursz = 0;
     while (val)
     {
