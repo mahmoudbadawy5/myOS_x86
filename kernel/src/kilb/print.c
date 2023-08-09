@@ -1,6 +1,7 @@
 #include <vga.h>
 #include <stdio.h>
 #include <mem/phys_mem.h>
+#include <stdarg.h>
 
 char *buf = 0;
 
@@ -60,16 +61,20 @@ void print_int(int val, int base, int size)
     puts(buf);
 }
 
-void panic(const char *str)
+void panic(const char *format, ...)
 {
-    puts(str);
+    va_list args;
+    va_start(args, format);
+    puts("\x1b\x40");
+    vprintf(format, args);
+    va_end(args);
     __asm__("cli; hlt;");
 }
 
-void printf(const char *format, ...)
+void vprintf(const char *format, va_list args)
 {
-    char **arg = (char **)&format;
-    arg++;
+    /*char **arg = (char **)&format;
+    arg++;*/
     for (int i = 0; format[i]; i++)
     {
         if (format[i] != '%')
@@ -79,6 +84,9 @@ void printf(const char *format, ...)
         }
         i++;
         int sz = 1, base = 10;
+        uint32_t uval;
+        int32_t ival;
+        char *sval;
         if (format[i] == '0')
         {
             sz = 0;
@@ -95,10 +103,12 @@ void printf(const char *format, ...)
             putch('%');
             break;
         case 'd':
-            print_int(*(int *)arg++, 10, sz);
+            ival = va_arg(args, int32_t);
+            print_int(ival, 10, sz);
             break;
         case 'x':
-            print_int(*(int *)arg++, 16, sz);
+            ival = va_arg(args, int32_t);
+            print_int(ival, 16, sz);
             break;
         case 'u':
             if (format[i + 1] == 'x')
@@ -107,15 +117,26 @@ void printf(const char *format, ...)
                 base = 10, i++;
             else
                 base = 10;
-            print_uint(*(int *)arg++, base, sz);
+            uval = va_arg(args, uint32_t);
+            print_uint(uval, base, sz);
             break;
         case 's':
-            puts(*arg++);
+            sval = va_arg(args, char *);
+            puts(sval);
             break;
         case 'c':
-            putch(*(char *)arg++);
+            uval = va_arg(args, uint32_t);
+            putch((char)uval);
         default:
             putch(format[i]);
         }
     }
+}
+
+void printf(const char *format, ...)
+{
+    va_list args;
+    va_start(args, format);
+    vprintf(format, args);
+    va_end(args);
 }

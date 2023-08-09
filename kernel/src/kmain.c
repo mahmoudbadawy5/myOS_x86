@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <multiboot.h>
 #include <mem/phys_mem.h>
+#include <mem/virt_mem.h>
 #include <types.h>
 
 extern unsigned int code, end;
@@ -79,6 +80,10 @@ void kmain(unsigned long magic, multiboot_info_t *mbd)
     keyboard_install();
     printf("\x1b\x02OK\x1b\x0F]\t\n");
 
+    printf("Initializing Paging:\t[");
+    init_paging();
+    printf("\x1b\x02OK\x1b\x0F]\t\n");
+
     printf("Kernel loaded at %08ux, ends at: %08ux\n", kstart, kend);
 
     print_mmap(mbd);
@@ -87,6 +92,11 @@ void kmain(unsigned long magic, multiboot_info_t *mbd)
 
     /* Loop through the memory map and display the values */
     puts("Hello World!\n");
+
+    // // Let's do a page fault :)
+
+    // uint32_t *test_fault = (uint32_t *)0xC0000000;
+    // test_fault[0] = 15;
 
     uint32_t *test = alloc_blocks(2);
     uint32_t *test2 = alloc_blocks(3);
