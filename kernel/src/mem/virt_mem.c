@@ -21,6 +21,60 @@ void enable_paging()
                          "movl %EAX, %CR0;");
 }
 
+uint32_t *get_page(uint32_t virt_address)
+{
+    uint32_t pd_entry = (virt_address) >> 22;
+    uint32_t pt_entry = ((virt_address) >> 12) & 0x3FF;
+    // printf("Getting page for %ux, pd_entry: %ux, pt_enrty: %ud\n", virt_address, pd_entry, pt_entry);
+    uint32_t *table_entry = &cur_page_dir[pd_entry];
+    // printf("Table enrty was: %ux\n", (*table_entry));
+    if ((*table_entry & PAGE_PRESENT) == 0)
+    {
+        uint32_t *table = (uint32_t *)alloc_blocks(1);
+        memset(table, 0, sizeof(*table) * 1024);
+        *table_entry = table;
+        // printf("Table enrty created: %ux\n", (uint32_t)table_entry);
+        *table_entry |= (PAGE_PRESENT | PAGE_RW);
+    }
+    uint32_t *table = (uint32_t *)(*table_entry & PAGE_ADDR);
+    uint32_t *page_entry = &table[pt_entry];
+    // printf("Page entry is: %ux\n", (uint32_t)page_entry);
+    return page_entry;
+}
+
+void *allocate_page(uint32_t *page)
+{
+    void *phys_addr = alloc_blocks(1);
+    if (phys_addr)
+    {
+        *page |= ((uint32_t)phys_addr & PAGE_ADDR);
+        *page |= (PAGE_PRESENT);
+    }
+    return phys_addr;
+}
+
+void free_page(uint32_t *page)
+{
+    void *address = (void *)((*page) & PAGE_ADDR);
+    if (address)
+        free_blocks(address, 1);
+    *page &= ~PAGE_PRESENT;
+}
+
+void map_address(void *virt_address, void *phys_address)
+{
+    uint32_t *page = get_page((uint32_t)virt_address);
+    *page |= ((uint32_t)phys_address & PAGE_ADDR);
+    *page |= PAGE_PRESENT;
+}
+
+void unmap_address(void *virt_address)
+{
+    uint32_t *page = get_page((uint32_t)virt_address);
+    *page &= ~PAGE_ADDR;
+    *page &= ~PAGE_PRESENT;
+}
+
 void init_paging()
 {
     /*

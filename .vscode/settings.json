@@ -4,6 +4,7 @@
     },
     "python.formatting.provider": "none",
     "files.associations": {
-        "kbd.h": "c"
+        "kbd.h": "c",
+        "phys_mem.h": "c"
     }
 }

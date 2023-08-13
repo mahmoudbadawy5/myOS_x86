@@ -95,8 +95,16 @@ void kmain(unsigned long magic, multiboot_info_t *mbd)
 
     // // Let's do a page fault :)
 
-    // uint32_t *test_fault = (uint32_t *)0xC0000000;
-    // test_fault[0] = 15;
+    // Let's map an address
+
+    map_address((void *)0xC0000000, (void *)0x00200000);
+    printf("DONE\n");
+    // reset_page_dir();
+
+    uint32_t *test_fault = (uint32_t *)0xC0000000;
+    test_fault[0] = 15;
+    int x = test_fault[0];
+    printf("Read: %d\n", x);
 
     uint32_t *test = alloc_blocks(2);
     uint32_t *test2 = alloc_blocks(3);
