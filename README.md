@@ -10,7 +10,7 @@ Trying to make a simple operating system for fun.
 
 ~~3. Adding a memory manager~~
 
-4. Enabling paging
+~~4. Enabling paging~~
 
 5. Implementing Virtual Filesystem
 
