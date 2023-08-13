@@ -2,13 +2,14 @@
 #include <stdio.h>
 #include <mem/phys_mem.h>
 #include <stdarg.h>
+#include <mem/malloc.h>
 
 char *buf = 0;
 
 void print_uint(unsigned int val, int base, int size)
 {
     if (!buf)
-        buf = (char *)alloc_blocks(1);
+        buf = (char *)malloc(80);
     int cursz = 0;
     while (val)
     {
@@ -32,8 +33,8 @@ void print_uint(unsigned int val, int base, int size)
 
 void print_int(int val, int base, int size)
 {
-
-    buf = (char *)0x32674;
+    if (!buf)
+        buf = (char *)malloc(80);
     if (val < 0)
     {
         buf[0] = '-';
