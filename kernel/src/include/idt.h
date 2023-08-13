@@ -29,6 +29,7 @@ struct idt_ptr idtp;
 /* This exists in 'start.asm', and is used to load our IDT */
 extern void idt_load();
 
-extern void idt_install();
+void idt_set_gate(unsigned char num, unsigned long base, unsigned short sel, unsigned char flags);
+void idt_install();
 
 #endif

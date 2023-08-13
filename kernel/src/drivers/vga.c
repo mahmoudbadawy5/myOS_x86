@@ -1,19 +1,19 @@
 #include <vga.h>
 #include <arch.h>
 #include <string.h>
-
-unsigned short *vgamem;
+#include <types.h>
+uint16_t *vgamem;
 int attrib = 0x0F;
 int csr_x = 0, csr_y = 0, col_next = 0;
 
 void scroll(void)
 {
-    unsigned short blank = (attrib << 8) | ' ';
+    uint16_t blank = (attrib << 8) | ' ';
 
     if (csr_y >= 25)
     {
-        unsigned int scroll_by = csr_y - 25 + 1;
-        memcpy(vgamem, vgamem + 80 * (scroll_by), (25 - scroll_by) * 80 * 2);
+        uint32_t scroll_by = csr_y - 25 + 1;
+        memcpy((uint8_t *)vgamem, (uint8_t *)(vgamem + 80 * (scroll_by)), (25 - scroll_by) * 80 * 2);
         memsetw(vgamem + 80 * (25 - scroll_by), blank, 80);
         csr_y = 25 - 1;
     }
@@ -21,7 +21,7 @@ void scroll(void)
 
 void move_csr(void)
 {
-    unsigned temp;
+    uint32_t temp;
 
     /* The equation for finding the index in a linear
      *  chunk of memory can be represented by:
@@ -43,7 +43,7 @@ void move_csr(void)
 
 void cls(void)
 {
-    unsigned short blank = (attrib << 8) | ' ';
+    uint16_t blank = (attrib << 8) | ' ';
     for (int i = 0; i < 25; i++)
         memsetw(vgamem + i * 80, blank, 80);
     move_csr();
@@ -82,7 +82,7 @@ void putch(char c)
     }
     else if (c >= ' ')
     {
-        unsigned short *where = vgamem + (csr_y * 80 + csr_x);
+        uint16_t *where = vgamem + (csr_y * 80 + csr_x);
         *where = (c | (attrib << 8)); /* Character AND attributes: color */
         csr_x++;
     }
@@ -111,6 +111,6 @@ void settextcolor(unsigned char forecolor, unsigned char backcolor)
 
 void init_video(void)
 {
-    vgamem = 0xB8000;
+    vgamem = (uint16_t *)0xB8000;
     cls();
 }

@@ -1,5 +1,6 @@
 #include <idt.h>
 #include <string.h>
+#include <types.h>
 
 /* Use this function to set an entry in the IDT. Alot simpler
  *  than twiddling with the GDT ;) */
@@ -22,10 +23,10 @@ void idt_install()
 {
     /* Sets the special IDT pointer up, just like in 'gdt.c' */
     idtp.limit = (sizeof(struct idt_entry) * 256) - 1;
-    idtp.base = &idt;
+    idtp.base = (uint32_t)&idt;
 
     /* Clear out the entire IDT, initializing it to zeros */
-    memset(&idt, 0, sizeof(struct idt_entry) * 256);
+    memset((uint8_t *)&idt, 0, sizeof(struct idt_entry) * 256);
 
     /* Add any new ISRs to the IDT here using idt_set_gate */
 

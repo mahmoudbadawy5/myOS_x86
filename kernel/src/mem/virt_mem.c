@@ -1,6 +1,7 @@
 #include <types.h>
 #include <mem/phys_mem.h>
 #include <mem/virt_mem.h>
+#include <string.h>
 
 uint32_t *cur_page_dir = 0;
 uint32_t *kernel_page_dir = 0;
@@ -31,8 +32,8 @@ uint32_t *get_page(uint32_t virt_address)
     if ((*table_entry & PAGE_PRESENT) == 0)
     {
         uint32_t *table = (uint32_t *)alloc_blocks(1);
-        memset(table, 0, sizeof(*table) * 1024);
-        *table_entry = table;
+        memset((uint8_t *)table, 0, sizeof(*table) * 1024);
+        *table_entry = (uint32_t)table;
         // printf("Table enrty created: %ux\n", (uint32_t)table_entry);
         *table_entry |= (PAGE_PRESENT | PAGE_RW);
     }

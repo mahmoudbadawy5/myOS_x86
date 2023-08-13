@@ -1,6 +1,6 @@
 print("#include <isr.h>")
 print("#include <idt.h>")
-print("#include <vga.h>")
+print("#include <stdio.h>")
 print("""
 /* These are function prototypes for all of the exception
 *  handlers: The first 32 entries in the IDT are reserved
@@ -37,7 +37,7 @@ print("""
 *  corresponds to each and every exception. We get the correct
 *  message by accessing like:
 *  exception_message[interrupt_number] */
-unsigned char *exception_messages[] =
+char *exception_messages[] =
 {
     "Division By Zero",
     "Debug",
