@@ -5,6 +5,7 @@
     "python.formatting.provider": "none",
     "files.associations": {
         "kbd.h": "c",
-        "phys_mem.h": "c"
+        "phys_mem.h": "c",
+        "types.h": "c"
     }
 }
