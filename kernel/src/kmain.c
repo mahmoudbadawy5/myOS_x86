@@ -13,10 +13,12 @@
 #include <mem/phys_mem.h>
 #include <mem/virt_mem.h>
 #include <mem/malloc.h>
+#include <math.h>
 
 extern unsigned int code, end;
 unsigned int kstart = (unsigned int)&code;
 unsigned int kend = (unsigned int)&end;
+uint32_t initrd_location, initrd_end;
 
 void print_mmap(multiboot_info_t *mbd)
 {
@@ -94,7 +96,9 @@ void malloc_test()
 
 void init_memory_regions(unsigned long magic, multiboot_info_t *mbd)
 {
-    init_phys_mem(kend);
+    initrd_location = *((uint32_t *)mbd->mods_addr);
+    initrd_end = *(uint32_t *)(mbd->mods_addr + 4);
+    init_phys_mem(max(kend, initrd_end));
     for (int i = 0; i < mbd->mmap_length;
          i += sizeof(multiboot_memory_map_t))
     {
