@@ -1,16 +1,17 @@
-iso: myos.iso
+kernel_src = $(shell find kernel/src -name "*.c") $(shell find kernel/src -name "*.asm")
 
-kernel/kernel.bin:
+all: myos.iso
+
+kernel.bin: $(kernel_src)
 	make -C kernel
-
-myos.iso: kernel/kernel.bin
-	@cp kernel/kernel.bin isodir/boot
-	grub-mkrescue -o myos.iso isodir
-
 
 initrd: tools/create_initrd.py
 	@python tools/create_initrd.py initrd initrd.img
+
+myos.iso: kernel.bin initrd
+	@cp kernel/kernel.bin isodir/boot
 	@cp initrd.img isodir/boot
+	grub-mkrescue -o myos.iso isodir
 
 clean:
 	make -C kernel clean
