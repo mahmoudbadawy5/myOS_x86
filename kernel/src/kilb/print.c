@@ -3,13 +3,11 @@
 #include <mem/phys_mem.h>
 #include <stdarg.h>
 #include <mem/malloc.h>
+#include <types.h>
+#include <string.h>
 
-char *buf = 0;
-
-void print_uint(unsigned int val, int base, int size)
+size_t print_uint(char *buf, unsigned int val, int base, int size)
 {
-    if (!buf)
-        buf = (char *)malloc(80);
     int cursz = 0;
     while (val)
     {
@@ -20,7 +18,6 @@ void print_uint(unsigned int val, int base, int size)
     }
     while (cursz < size)
         buf[cursz++] = '0';
-    buf[cursz] = '\0';
     // Reverse string
     for (int i = 0; i < cursz / 2; i++)
     {
@@ -28,13 +25,11 @@ void print_uint(unsigned int val, int base, int size)
         buf[i] = buf[cursz - i - 1];
         buf[cursz - i - 1] = tmp;
     }
-    puts(buf);
+    return cursz;
 }
 
-void print_int(int val, int base, int size)
+size_t print_int(char *buf, int val, int base, int size)
 {
-    if (!buf)
-        buf = (char *)malloc(80);
     if (val < 0)
     {
         buf[0] = '-';
@@ -51,7 +46,6 @@ void print_int(int val, int base, int size)
     }
     while (cursz < size)
         buf[cursz++] = '0';
-    buf[cursz] = '\0';
     // Reverse string
     for (int i = 0; i < cursz / 2; i++)
     {
@@ -59,20 +53,23 @@ void print_int(int val, int base, int size)
         buf[i] = buf[cursz - i - 1];
         buf[cursz - i - 1] = tmp;
     }
-    puts(buf);
+    return cursz;
 }
 
 void panic(const char *format, ...)
 {
     va_list args;
     va_start(args, format);
+    char *buf = malloc(BUFFER_SIZE);
     puts("\x1b\x40");
-    vprintf(format, args);
+    vsprintf(buf, format, args);
+    puts(buf);
+    free(buf);
     va_end(args);
     __asm__("cli; hlt;");
 }
 
-void vprintf(const char *format, va_list args)
+void vsprintf(char *buf, const char *format, va_list args)
 {
     /*char **arg = (char **)&format;
     arg++;*/
@@ -80,7 +77,8 @@ void vprintf(const char *format, va_list args)
     {
         if (format[i] != '%')
         {
-            putch(format[i]);
+            *buf = format[i];
+            buf++;
             continue;
         }
         i++;
@@ -101,15 +99,16 @@ void vprintf(const char *format, va_list args)
         switch (format[i])
         {
         case '%':
-            putch('%');
+            *buf = '%';
+            buf++;
             break;
         case 'd':
             ival = va_arg(args, int32_t);
-            print_int(ival, 10, sz);
+            buf += print_int(buf, ival, 10, sz);
             break;
         case 'x':
             ival = va_arg(args, int32_t);
-            print_int(ival, 16, sz);
+            buf += print_int(buf, ival, 16, sz);
             break;
         case 'u':
             if (format[i + 1] == 'x')
@@ -119,25 +118,41 @@ void vprintf(const char *format, va_list args)
             else
                 base = 10;
             uval = va_arg(args, uint32_t);
-            print_uint(uval, base, sz);
+            buf += print_uint(buf, uval, base, sz);
             break;
         case 's':
             sval = va_arg(args, char *);
-            puts(sval);
+            while (*sval)
+            {
+                *buf = *sval;
+                buf++;
+                sval++;
+            }
             break;
         case 'c':
             uval = va_arg(args, uint32_t);
-            putch((char)uval);
+            *buf = (char)uval;
+            buf++;
         default:
-            putch(format[i]);
+            *buf = format[i];
+            buf++;
         }
     }
+    *buf = '\0';
+}
+
+void vfprintf(fs_node_t *file, const char *format, va_list args)
+{
+    char *buf = malloc(BUFFER_SIZE);
+    vsprintf(buf, format, args);
+    write_fs(file, strlen(buf), 1, (uint8_t *)buf);
+    free(buf);
 }
 
 void printf(const char *format, ...)
 {
     va_list args;
     va_start(args, format);
-    vprintf(format, args);
+    vfprintf(stdin_node, format, args);
     va_end(args);
 }

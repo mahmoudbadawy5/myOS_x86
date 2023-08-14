@@ -1,22 +1,29 @@
 #include <fs/vfs.h>
 #include <string.h>
+#include <mem/malloc.h>
 
 // Most of the code is copied from: http://www.jamesmolloy.co.uk/tutorial_html/8.-The%20VFS%20and%20the%20initrd.html
 
 fs_node_t *root_dir;
 
-uint32_t read_fs(fs_node_t *node, uint32_t offset, uint32_t size, uint8_t *buffer)
+uint32_t read_fs(fs_node_t *node, uint32_t size, uint32_t units, uint8_t *buffer)
 {
     if (node->read)
-        return node->read(node, offset, size, buffer);
+        return node->read(node, size, units, buffer);
     return 0;
 }
 
-uint32_t write_fs(fs_node_t *node, uint32_t offset, uint32_t size, uint8_t *buffer)
+uint32_t write_fs(fs_node_t *node, uint32_t size, uint32_t units, uint8_t *buffer)
 {
     if (node->write)
-        return node->write(node, offset, size, buffer);
+        return node->write(node, size, units, buffer);
     return 0;
+}
+
+void seek_fs(fs_node_t *node, uint32_t offset, uint8_t type)
+{
+    if (node->seek)
+        return node->seek(node, offset, type);
 }
 
 void open_fs(fs_node_t *node, bool read, bool write)
@@ -59,8 +66,8 @@ fs_node_t *get_node(char *path, fs_node_t *root)
     int en_ind = st_ind;
     while (path[en_ind] && path[en_ind] != '/')
         en_ind++;
-    char *fname = maloc(en_ind - st_ind);
-    memcpy(fname, path + st_ind, en_ind - st_ind);
+    char *fname = malloc(en_ind - st_ind);
+    memcpy((uint8_t *)fname, (uint8_t *)path + st_ind, en_ind - st_ind);
     if ((root->flags & FS_MOUNTPOINT) == FS_MOUNTPOINT || (root->flags & FS_SYMLINK) == FS_SYMLINK)
         root = root->ptr;
     if (root->finddir)

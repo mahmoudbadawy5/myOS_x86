@@ -92,23 +92,9 @@ void malloc_test()
     free(arr3);
 }
 
-void kmain(unsigned long magic, multiboot_info_t *mbd)
+void init_memory_regions(unsigned long magic, multiboot_info_t *mbd)
 {
     init_phys_mem(kend);
-    init_video();
-    printf("Initializing video:\t\t[\x1b\x02OK\x1b\x0F]\n");
-    printf("Initializing memory:\t[");
-
-    if (magic != MULTIBOOT_BOOTLOADER_MAGIC)
-    {
-        panic("Invalid magic number!!");
-    }
-
-    if (!(mbd->flags >> 6 & 0x1))
-    {
-        panic("invalid memory map given by GRUB bootloader");
-    }
-
     for (int i = 0; i < mbd->mmap_length;
          i += sizeof(multiboot_memory_map_t))
     {
@@ -119,10 +105,38 @@ void kmain(unsigned long magic, multiboot_info_t *mbd)
             initialize_memory_region(mmmt->addr_low, mmmt->len_low);
         }
     }
+    if (magic != MULTIBOOT_BOOTLOADER_MAGIC)
+    {
+        // Panic is not available
+        puts("\x1b\x40");
+        puts("Invalid magic number!!");
+        __asm__("cli; hlt;");
+    }
+
+    if (!(mbd->flags >> 6 & 0x1))
+    {
+        puts("\x1b\x40");
+        puts("invalid memory map given by GRUB bootloader");
+        __asm__("cli; hlt;");
+    }
+
     deinitialize_memory_region(0, 0x00100000);                                   // reserve first 1M for grub/bios
     deinitialize_memory_region(kstart, (kend - kstart) + MAX_BLOCK_ENTRIES * 4); // Reserve kernel space
+}
 
-    printf("\x1b\x02OK\x1b\x0F]\n");
+void kmain(unsigned long magic, multiboot_info_t *mbd)
+{
+    init_memory_regions(magic, mbd);
+    init_paging();
+    init_malloc();
+    init_video();
+    printf("Initializing video:\t\t[\x1b\x02OK\x1b\x0F]\n");
+    printf("Initializing memory:\t[\x1b\x02OK\x1b\x0F]\n");
+
+    printf("Initializing Paging:\t[\x1b\x02OK\x1b\x0F]\n");
+
+    printf("Initializing malloc:\t[\x1b\x02OK\x1b\x0F]\n");
+
     printf("Initializing GDT:\t\t[");
     gdt_install();
     printf("\x1b\x02OK\x1b\x0F]\n");
@@ -140,14 +154,6 @@ void kmain(unsigned long magic, multiboot_info_t *mbd)
     printf("\x1b\x02OK\x1b\x0F]\n");
     printf("Initializing Keyboard:\t[");
     keyboard_install();
-    printf("\x1b\x02OK\x1b\x0F]\t\n");
-
-    printf("Initializing Paging:\t[");
-    init_paging();
-    printf("\x1b\x02OK\x1b\x0F]\t\n");
-
-    printf("Initializing malloc:\t[");
-    init_malloc();
     printf("\x1b\x02OK\x1b\x0F]\t\n");
 
     printf("Kernel loaded at %08ux, ends at: %08ux\n", kstart, kend);

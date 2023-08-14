@@ -2,6 +2,9 @@
 #include <arch.h>
 #include <string.h>
 #include <types.h>
+#include <fs/vfs.h>
+#include <mem/malloc.h>
+
 uint16_t *vgamem;
 int attrib = 0x0F;
 int csr_x = 0, csr_y = 0, col_next = 0;
@@ -102,6 +105,20 @@ void puts(char *str)
         putch(str[i++]);
 }
 
+uint32_t vga_write_fs(fs_node_t *node, uint32_t size, uint32_t units, uint8_t *buffer)
+{
+    uint32_t ret = 0;
+    for (int i = 0; i < units; i++)
+    {
+        for (int j = 0; j < size; j++)
+        {
+            putch(*(buffer + j));
+            ret++;
+        }
+    }
+    return ret;
+}
+
 void settextcolor(unsigned char forecolor, unsigned char backcolor)
 {
     /* Top 4 bytes are the background, bottom 4 bytes
@@ -113,4 +130,8 @@ void init_video(void)
 {
     vgamem = (uint16_t *)0xB8000;
     cls();
+    stdin_node = malloc(sizeof(fs_node_t));
+    stdin_node->inode = 0;
+    stdin_node->write = vga_write_fs;
+    stdin_node->flags |= FS_CHARDEVICE;
 }
