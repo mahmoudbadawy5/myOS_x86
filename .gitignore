@@ -1,4 +1,5 @@
 *.o
 *.bin
 *.iso
+*.img
 kernel/gen_src
