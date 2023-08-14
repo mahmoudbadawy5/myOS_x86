@@ -6,6 +6,7 @@
     "files.associations": {
         "kbd.h": "c",
         "phys_mem.h": "c",
-        "types.h": "c"
+        "types.h": "c",
+        "string.h": "c"
     }
 }
