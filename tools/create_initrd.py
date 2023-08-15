@@ -76,6 +76,7 @@ for root_folder, folders, files in walk:
         dirs[cur_dir_ind][2+find*4] = cur_ind.to_bytes(4, 'little')
         find += 1
         cur_ind += len(files_raw[cur_file_ind])
+        cur_file_ind += 1
     cur_dir_ind += 1
 
 

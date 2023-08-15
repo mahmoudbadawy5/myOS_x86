@@ -4,8 +4,6 @@
 
 // Most of the code is copied from: http://www.jamesmolloy.co.uk/tutorial_html/8.-The%20VFS%20and%20the%20initrd.html
 
-fs_node_t *root_dir;
-
 uint32_t read_fs(fs_node_t *node, uint32_t size, uint32_t units, uint8_t *buffer)
 {
     if (node->read)
@@ -54,6 +52,8 @@ fs_node_t *finddir_fs(fs_node_t *node, char *name)
 
 fs_node_t *get_node(char *path, fs_node_t *root)
 {
+    if (!root)
+        printf("No root :(");
     if (path[0] == '\0' || (path[0] == '/' && path[1] == '\0'))
         return root;
     if (!root)
@@ -66,12 +66,13 @@ fs_node_t *get_node(char *path, fs_node_t *root)
     int en_ind = st_ind;
     while (path[en_ind] && path[en_ind] != '/')
         en_ind++;
-    char *fname = malloc(en_ind - st_ind);
+    char *fname = malloc(en_ind - st_ind + 1);
     memcpy((uint8_t *)fname, (uint8_t *)path + st_ind, en_ind - st_ind);
+    fname[en_ind - st_ind] = '\0';
     if ((root->flags & FS_MOUNTPOINT) == FS_MOUNTPOINT || (root->flags & FS_SYMLINK) == FS_SYMLINK)
         root = root->ptr;
     if (root->finddir)
-        return get_node(path + en_ind, root->finddir(root, fname));
+        return get_node(path + en_ind, finddir_fs(root, fname));
     return NULL;
 }
 

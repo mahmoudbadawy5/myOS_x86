@@ -13,6 +13,7 @@
 #include <mem/phys_mem.h>
 #include <mem/virt_mem.h>
 #include <mem/malloc.h>
+#include <fs/initrd.h>
 #include <math.h>
 
 extern unsigned int code, end;
@@ -160,6 +161,8 @@ void kmain(unsigned long magic, multiboot_info_t *mbd)
     keyboard_install();
     printf("\x1b\x02OK\x1b\x0F]\t\n");
 
+    init_initrd(initrd_location);
+
     printf("Kernel loaded at %08ux, ends at: %08ux\n", kstart, kend);
 
     print_mmap(mbd);
@@ -167,6 +170,41 @@ void kmain(unsigned long magic, multiboot_info_t *mbd)
     __asm__ __volatile__("sti");
 
     // malloc_test();
+
+    char *file_content = malloc(1024);
+    fs_node_t *file = get_node("/test_folder/test.txt", root_dir);
+    if (!file)
+    {
+        printf("Failed to read\n");
+    }
+    else if (!file->read)
+    {
+        printf("Read function is not ready?");
+    }
+    else
+    {
+        read_fs(file, file->size, 1, (uint8_t *)file_content);
+        file_content[file->size] = '\0';
+        printf("%s\n", file_content);
+    }
+
+    printf("\n\n\n");
+
+    fs_node_t *file2 = get_node("///test_folder//depth2_folder//depth3_file.txt", root_dir);
+    if (!file2)
+    {
+        printf("Failed to read\n");
+    }
+    else if (!file2->read)
+    {
+        printf("Read function is not ready?");
+    }
+    else
+    {
+        read_fs(file2, file2->size, 1, (uint8_t *)file_content);
+        file_content[file2->size] = '\0';
+        printf("%s\n", file_content);
+    }
 
     /* Loop through the memory map and display the values */
     puts("Hello World!\n");

@@ -12,9 +12,9 @@ Trying to make a simple operating system for fun.
 
 ~~4. Enabling paging~~
 
-5. Implementing Virtual Filesystem
+~~5. Implementing Virtual Filesystem~~
 
-6. Adding a Read-only FS (Init Ramdisk)
+~~6. Adding a Read-only FS (Init Ramdisk)~~
 
 7. Adding another R/W filesystem (Fat12 maybe?)
 

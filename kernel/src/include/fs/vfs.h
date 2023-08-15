@@ -10,6 +10,10 @@
 #define FS_SYMLINK 0x06
 #define FS_MOUNTPOINT 0x08 // Is the file an active mountpoint?
 
+#define SEEK_START 0
+#define SEEK_CUR 1
+#define SEEK_END 2
+
 struct fs_node;
 
 typedef uint32_t (*read_type_t)(struct fs_node *, uint32_t, uint32_t, uint8_t *);  // File, unit_size, num_units, buf
@@ -43,6 +47,8 @@ typedef struct dirent
     char **files;
     uint32_t file_count;
 } dirent_t;
+
+fs_node_t *root_dir;
 
 void init_vfs(fs_node_t *root);
 uint32_t read_fs(fs_node_t *node, uint32_t size, uint32_t units, uint8_t *buffer);
