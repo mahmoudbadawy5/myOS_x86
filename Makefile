@@ -5,7 +5,11 @@ all: myos.iso
 kernel.bin: $(kernel_src)
 	make -C kernel
 
-initrd: tools/create_initrd.py
+apps/test1.bin: apps/test1.c
+	make -C apps test1.bin
+
+initrd: tools/create_initrd.py apps/test1.bin
+	@cp apps/test1.bin initrd/
 	@python tools/create_initrd.py initrd initrd.img
 
 myos.iso: kernel.bin initrd

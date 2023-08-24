@@ -18,7 +18,7 @@ Trying to make a simple operating system for fun.
 
 7. Adding another R/W filesystem (Fat12 maybe?)
 
-8. Userspace + Syscalls (int 0x80)
+8. Userspace ~~+ Syscalls (int 0x80)~~
 
 9. Adding Graphics
 

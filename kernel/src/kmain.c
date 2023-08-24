@@ -15,6 +15,7 @@
 #include <mem/malloc.h>
 #include <fs/initrd.h>
 #include <math.h>
+#include <arch/syscalls.h>
 
 extern unsigned int code, end;
 unsigned int kstart = (unsigned int)&code;
@@ -145,20 +146,29 @@ void kmain(unsigned long magic, multiboot_info_t *mbd)
     printf("Initializing GDT:\t\t[");
     gdt_install();
     printf("\x1b\x02OK\x1b\x0F]\n");
+
     printf("Initializing IDT:\t\t[");
     idt_install();
     printf("\x1b\x02OK\x1b\x0F]\n");
+
     printf("Initializing ISR:\t\t[");
     isrs_install();
     printf("\x1b\x02OK\x1b\x0F]\n");
+
     printf("Initializing IRQ:\t\t[");
     irq_install();
     printf("\x1b\x02OK\x1b\x0F]\n");
+
     printf("Initializing Timer:\t\t[");
     timer_install();
     printf("\x1b\x02OK\x1b\x0F]\n");
+
     printf("Initializing Keyboard:\t[");
     keyboard_install();
+    printf("\x1b\x02OK\x1b\x0F]\t\n");
+
+    printf("Initializing Syscalls:\t[");
+    init_syscalls();
     printf("\x1b\x02OK\x1b\x0F]\t\n");
 
     init_initrd(initrd_location);
@@ -204,6 +214,23 @@ void kmain(unsigned long magic, multiboot_info_t *mbd)
         read_fs(file2, file2->size, 1, (uint8_t *)file_content);
         file_content[file2->size] = '\0';
         printf("%s\n", file_content);
+    }
+
+    fs_node_t *program = get_node("/test1.bin", root_dir);
+    if (!program)
+    {
+        printf("Failed to read\n");
+    }
+    else if (!program->read)
+    {
+        printf("Read function is not ready?");
+    }
+    else
+    {
+        char *program_content = malloc(program->size);
+        read_fs(program, program->size, 1, (uint8_t *)program_content);
+        void (*entry_point)() = (void (*)())program_content;
+        entry_point();
     }
 
     /* Loop through the memory map and display the values */
