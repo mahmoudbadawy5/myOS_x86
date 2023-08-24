@@ -20,6 +20,8 @@ Trying to make a simple operating system for fun.
 
 8. Userspace ~~+ Syscalls (int 0x80)~~
 
-9. Adding Graphics
+9. Adding more Syscalls to implement C Library
 
-10. More improvements?
+10. Adding Graphics
+
+11. More improvements?
