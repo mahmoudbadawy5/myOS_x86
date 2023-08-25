@@ -135,6 +135,7 @@ void kmain(unsigned long magic, multiboot_info_t *mbd)
     init_memory_regions(magic, mbd);
     init_paging();
     init_malloc();
+    files_open = malloc(sizeof(FILE *) * MAX_FILES);
     init_video();
     printf("Initializing video:\t\t[\x1b\x02OK\x1b\x0F]\n");
     printf("Initializing memory:\t[\x1b\x02OK\x1b\x0F]\n");
@@ -216,7 +217,7 @@ void kmain(unsigned long magic, multiboot_info_t *mbd)
         printf("%s\n", file_content);
     }
 
-    fs_node_t *program = get_node("/test1.bin", root_dir);
+    fs_node_t *program = get_node("/test2.bin", root_dir);
     if (!program)
     {
         printf("Failed to read\n");
@@ -228,6 +229,7 @@ void kmain(unsigned long magic, multiboot_info_t *mbd)
     else
     {
         char *program_content = malloc(program->size);
+        shift_by = (uint32_t)program_content;
         read_fs(program, program->size, 1, (uint8_t *)program_content);
         void (*entry_point)() = (void (*)())program_content;
         entry_point();

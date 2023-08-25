@@ -19,7 +19,7 @@ uint32_t initrd_read_fs(fs_node_t *node, uint32_t size, uint32_t units, uint8_t 
         buffer[i] = *(char *)(node->impl + node->seek_offset + i);
     }
     node->seek_offset += size * units;
-    return size * units;
+    return units;
 }
 
 void initrd_seek_fs(fs_node_t *node, uint32_t offset, uint8_t type)

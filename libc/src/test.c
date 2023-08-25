@@ -17,3 +17,20 @@ unsigned int test_syscall1(unsigned int val)
                          : "a"(1), "b"(val));
     return ret;
 }
+
+int strlen(const char *c)
+{
+    int i = 0;
+    while (c[i])
+        i++;
+    return i;
+}
+
+unsigned int print(const char *msg)
+{
+    unsigned int ret;
+    __asm__ __volatile__("int $0x80;"
+                         : "=a"(ret)
+                         : "a"(4), "b"(msg), "c"(1), "d"(strlen(msg)), "S"(1));
+    return ret;
+}

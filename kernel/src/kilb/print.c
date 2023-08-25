@@ -153,6 +153,6 @@ void printf(const char *format, ...)
 {
     va_list args;
     va_start(args, format);
-    vfprintf(stdin_node, format, args);
+    vfprintf(stdout_node, format, args);
     va_end(args);
 }

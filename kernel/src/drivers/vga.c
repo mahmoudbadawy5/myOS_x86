@@ -4,6 +4,7 @@
 #include <types.h>
 #include <fs/vfs.h>
 #include <mem/malloc.h>
+#include <stdio.h>
 
 uint16_t *vgamem;
 int attrib = 0x0F;
@@ -130,8 +131,11 @@ void init_video(void)
 {
     vgamem = (uint16_t *)0xB8000;
     cls();
-    stdin_node = malloc(sizeof(fs_node_t));
-    stdin_node->inode = 0;
-    stdin_node->write = vga_write_fs;
-    stdin_node->flags |= FS_CHARDEVICE;
+    stdout_node = malloc(sizeof(fs_node_t));
+    stdout_node->inode = 0;
+    stdout_node->write = vga_write_fs;
+    stdout_node->flags |= FS_CHARDEVICE;
+    files_open[1] = malloc(sizeof(FILE));
+    files_open[1]->file = stdout_node;
+    files_open[1]->flags = FILE_WRITE;
 }

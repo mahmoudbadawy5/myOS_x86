@@ -52,8 +52,6 @@ fs_node_t *finddir_fs(fs_node_t *node, char *name)
 
 fs_node_t *get_node(char *path, fs_node_t *root)
 {
-    if (!root)
-        printf("No root :(");
     if (path[0] == '\0' || (path[0] == '/' && path[1] == '\0'))
         return root;
     if (!root)

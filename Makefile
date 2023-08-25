@@ -1,15 +1,16 @@
 kernel_src = $(shell find kernel/src -name "*.c") $(shell find kernel/src -name "*.asm")
+apps = $(patsubst %.c, %.bin, $(shell find apps -name "*.c"))
 
 all: myos.iso
 
 kernel.bin: $(kernel_src)
 	make -C kernel
 
-apps/test1.bin: apps/test1.c
-	make -C apps test1.bin
+apps/%.bin: apps/%.c
+	make -C apps $(patsubst apps/%, %, $@)
 
-initrd: tools/create_initrd.py apps/test1.bin
-	@cp apps/test1.bin initrd/
+initrd: tools/create_initrd.py $(apps)
+	@cp $(apps) initrd/
 	@python tools/create_initrd.py initrd initrd.img
 
 myos.iso: kernel.bin initrd
@@ -19,6 +20,9 @@ myos.iso: kernel.bin initrd
 
 clean:
 	make -C kernel clean
+	make -C libc clean
+	make -C apps clean
+	rm initrd/*.bin
 	rm myos.iso
 
 run: myos.iso

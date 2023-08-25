@@ -2,7 +2,7 @@
 
 #include <fs/vfs.h>
 
-fs_node_t *stdin_node;
+fs_node_t *stdout_node;
 
 extern void cls();
 extern void putch(char c);
