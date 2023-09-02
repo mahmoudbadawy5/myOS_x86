@@ -27,3 +27,6 @@ clean:
 
 run: myos.iso
 	kvm -cdrom myos.iso
+
+bochs: myos.iso
+	bochs

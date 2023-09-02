@@ -1,25 +1,33 @@
-OUTPUT_FORMAT("binary")
+OUTPUT_FORMAT(elf32-i386)
 ENTRY(start)
 phys = 0x00100000;
+virt = 0xC0000000;
 SECTIONS
 {
-  .text phys : AT(phys) {
+  . = phys;
+  .multiboot.data : {
+    *(.multiboot.data)
+  }
+
+  .multiboot.text : {
+    *(.multiboot.text)
+  }
+
+  . += virt;
+  .text ALIGN (4K) : AT (ADDR (.text) - virt) {
     code = .;
     *(.text)
-    *(.rodata)
-    . = ALIGN(4096);
+    *(.rodata*)
   }
-  .data : AT(phys + (data - code))
+  .data ALIGN (4K) : AT (ADDR (.data) - virt)
   {
     data = .;
     *(.data)
-    . = ALIGN(4096);
   }
-  .bss : AT(phys + (bss - code))
+  .bss ALIGN (4K) : AT (ADDR (.bss) - virt)
   {
     bss = .;
     *(.bss)
-    . = ALIGN(4096);
   }
   end = .;
 }
