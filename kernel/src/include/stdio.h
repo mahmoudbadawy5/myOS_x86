@@ -32,4 +32,6 @@ void vsprintf(char *buf, const char *format, va_list args);
 void vfprintf(fs_node_t *file, const char *format, va_list args);
 void printf(const char *format, ...);
 
+void print_hex(uint32_t x);
+
 #endif

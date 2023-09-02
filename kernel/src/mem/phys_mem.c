@@ -2,6 +2,7 @@
 #include <types.h>
 #include <string.h>
 #include <stdio.h>
+#include <arch.h>
 
 uint32_t *mem_bitmap;
 
@@ -17,7 +18,7 @@ int test_block(int id)
 
 void init_phys_mem(const uint32_t start_address)
 {
-    mem_bitmap = (uint32_t *)start_address;
+    mem_bitmap = (uint32_t *)(start_address + KERNEL_VIRTUAL_BASE);
     memset((uint8_t *)mem_bitmap, 0, MAX_BLOCK_ENTRIES * sizeof(mem_bitmap[0]));
 }
 

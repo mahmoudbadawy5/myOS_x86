@@ -1,13 +1,14 @@
 #include <mem/malloc.h>
 #include <mem/phys_mem.h>
 #include <mem/virt_mem.h>
+#include <arch.h>
 
 malloc_header_t *malloc_head = 0;
 
 // First 4MB of virtual memory is already reserved for kernel/BIOS
 // Starting mallocing after 4MB;
 
-uint32_t malloc_virt_address = 4 * 1024 * 1024;
+uint32_t malloc_virt_address = 4 * 1024 * 1024 + KERNEL_VIRTUAL_BASE;
 uint32_t malloc_reserved_blocks = 0;
 
 void init_malloc()

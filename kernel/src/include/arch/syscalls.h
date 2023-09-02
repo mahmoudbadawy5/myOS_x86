@@ -20,8 +20,6 @@ typedef struct
 
 #define MAX_SYSCALLS 5
 
-int shift_by;
-
 void init_syscalls();
 int32_t syscall_test0(syscall_regs_t regs);
 int32_t syscall_test1(syscall_regs_t regs);

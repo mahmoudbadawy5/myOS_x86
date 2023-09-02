@@ -18,8 +18,8 @@
 #include <arch/syscalls.h>
 
 extern unsigned int code, end;
-unsigned int kstart = (unsigned int)&code;
-unsigned int kend = (unsigned int)&end;
+unsigned int kstart = (unsigned int)&code - KERNEL_VIRTUAL_BASE;
+unsigned int kend = (unsigned int)&end - KERNEL_VIRTUAL_BASE;
 uint32_t initrd_location, initrd_end;
 
 void print_mmap(multiboot_info_t *mbd)
@@ -29,7 +29,7 @@ void print_mmap(multiboot_info_t *mbd)
          i += sizeof(multiboot_memory_map_t))
     {
         multiboot_memory_map_t *mmmt =
-            (multiboot_memory_map_t *)(mbd->mmap_addr + i);
+            (multiboot_memory_map_t *)(mbd->mmap_addr + KERNEL_VIRTUAL_BASE + i);
         printf("Start Addr: 0x%08ux%08ux | Length: 0x%08ux%08ux | Type: %s\n",
                mmmt->addr_high, mmmt->addr_low, mmmt->len_high, mmmt->len_low, (mmmt->type == 1 ? "Available" : "Reserved"));
     }
@@ -96,16 +96,39 @@ void malloc_test()
     free(arr3);
 }
 
+void print_hex(uint32_t x)
+{
+    puts("0x");
+    for (int i = 7; i >= 0; i--)
+    {
+        int mask = (0xF << (4 * i));
+        int dig = (x & mask) >> (4 * i);
+        if (dig <= 9)
+            putch(dig + '0');
+        else
+            putch(dig - 10 + 'A');
+    }
+    putch('\n');
+}
+
 void init_memory_regions(unsigned long magic, multiboot_info_t *mbd)
 {
-    initrd_location = *((uint32_t *)mbd->mods_addr);
-    initrd_end = *(uint32_t *)(mbd->mods_addr + 4);
+    puts("KSTART: ");
+    print_hex(kstart);
+    initrd_location = *((uint32_t *)(mbd->mods_addr + KERNEL_VIRTUAL_BASE));
+    initrd_end = *(uint32_t *)(mbd->mods_addr + KERNEL_VIRTUAL_BASE + 4);
+
+    puts("KEND: ");
+    print_hex(kend);
+    puts("initrd_end: ");
+    print_hex(initrd_end);
     init_phys_mem(max(kend, initrd_end));
+    puts("init done :D\n");
     for (int i = 0; i < mbd->mmap_length;
          i += sizeof(multiboot_memory_map_t))
     {
         multiboot_memory_map_t *mmmt =
-            (multiboot_memory_map_t *)(mbd->mmap_addr + i);
+            (multiboot_memory_map_t *)(mbd->mmap_addr + KERNEL_VIRTUAL_BASE + i);
         if (mmmt->type == MULTIBOOT_MEMORY_AVAILABLE)
         {
             initialize_memory_region(mmmt->addr_low, mmmt->len_low);
@@ -126,17 +149,18 @@ void init_memory_regions(unsigned long magic, multiboot_info_t *mbd)
         __asm__("cli; hlt;");
     }
 
-    deinitialize_memory_region(0, 0x00100000);                                   // reserve first 1M for grub/bios
-    deinitialize_memory_region(kstart, (kend - kstart) + MAX_BLOCK_ENTRIES * 4); // Reserve kernel space
+    deinitialize_memory_region(0, kend + MAX_BLOCK_ENTRIES * 4); // reserve first 1M for grub/bios + Reserve kernel space + (old page tables)
 }
 
 void kmain(unsigned long magic, multiboot_info_t *mbd)
 {
+    init_video();
     init_memory_regions(magic, mbd);
     init_paging();
     init_malloc();
     files_open = malloc(sizeof(FILE *) * MAX_FILES);
-    init_video();
+    init_stdfiles();
+    puts("Hello World!");
     printf("Initializing video:\t\t[\x1b\x02OK\x1b\x0F]\n");
     printf("Initializing memory:\t[\x1b\x02OK\x1b\x0F]\n");
 
@@ -172,7 +196,7 @@ void kmain(unsigned long magic, multiboot_info_t *mbd)
     init_syscalls();
     printf("\x1b\x02OK\x1b\x0F]\t\n");
 
-    init_initrd(initrd_location);
+    init_initrd(initrd_location + KERNEL_VIRTUAL_BASE);
 
     printf("Kernel loaded at %08ux, ends at: %08ux\n", kstart, kend);
 
@@ -228,8 +252,10 @@ void kmain(unsigned long magic, multiboot_info_t *mbd)
     }
     else
     {
-        char *program_content = malloc(program->size);
-        shift_by = (uint32_t)program_content;
+        void *program_phys_page = alloc_blocks(1);
+        map_address(0, program_phys_page);
+        void *program_content = (void *)0;
+        // char *program_content = malloc(program->size);
         read_fs(program, program->size, 1, (uint8_t *)program_content);
         void (*entry_point)() = (void (*)())program_content;
         entry_point();
