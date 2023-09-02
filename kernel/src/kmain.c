@@ -29,7 +29,7 @@ void print_mmap(multiboot_info_t *mbd)
          i += sizeof(multiboot_memory_map_t))
     {
         multiboot_memory_map_t *mmmt =
-            (multiboot_memory_map_t *)(mbd->mmap_addr + i);
+            (multiboot_memory_map_t *)(mbd->mmap_addr + KERNEL_VIRTUAL_BASE + i);
         printf("Start Addr: 0x%08ux%08ux | Length: 0x%08ux%08ux | Type: %s\n",
                mmmt->addr_high, mmmt->addr_low, mmmt->len_high, mmmt->len_low, (mmmt->type == 1 ? "Available" : "Reserved"));
     }
@@ -117,6 +117,7 @@ void init_memory_regions(unsigned long magic, multiboot_info_t *mbd)
     print_hex(kstart);
     initrd_location = *((uint32_t *)(mbd->mods_addr + KERNEL_VIRTUAL_BASE));
     initrd_end = *(uint32_t *)(mbd->mods_addr + KERNEL_VIRTUAL_BASE + 4);
+
     puts("KEND: ");
     print_hex(kend);
     puts("initrd_end: ");
@@ -158,6 +159,7 @@ void kmain(unsigned long magic, multiboot_info_t *mbd)
     init_paging();
     init_malloc();
     files_open = malloc(sizeof(FILE *) * MAX_FILES);
+    init_stdfiles();
     puts("Hello World!");
     printf("Initializing video:\t\t[\x1b\x02OK\x1b\x0F]\n");
     printf("Initializing memory:\t[\x1b\x02OK\x1b\x0F]\n");
@@ -194,7 +196,7 @@ void kmain(unsigned long magic, multiboot_info_t *mbd)
     init_syscalls();
     printf("\x1b\x02OK\x1b\x0F]\t\n");
 
-    init_initrd(initrd_location);
+    init_initrd(initrd_location + KERNEL_VIRTUAL_BASE);
 
     printf("Kernel loaded at %08ux, ends at: %08ux\n", kstart, kend);
 
@@ -250,8 +252,10 @@ void kmain(unsigned long magic, multiboot_info_t *mbd)
     }
     else
     {
-        char *program_content = malloc(program->size);
-        shift_by = (uint32_t)program_content;
+        void *program_phys_page = alloc_blocks(1);
+        map_address(0, program_phys_page);
+        void *program_content = (void *)0;
+        // char *program_content = malloc(program->size);
         read_fs(program, program->size, 1, (uint8_t *)program_content);
         void (*entry_point)() = (void (*)())program_content;
         entry_point();

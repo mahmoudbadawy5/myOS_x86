@@ -69,6 +69,6 @@ int32_t syscall_read(syscall_regs_t regs)
 int32_t syscall_write(syscall_regs_t regs)
 {
     // Dirty hack until I can load programs properly
-    char *cur = (char *)(regs.ebx + shift_by);
+    char *cur = (char *)(regs.ebx);
     return fwrite(cur, regs.ecx, regs.edx, files_open[regs.esi]);
 }

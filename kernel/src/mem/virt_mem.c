@@ -35,9 +35,9 @@ uint32_t *get_page(uint32_t virt_address)
     // printf("Table enrty was: %ux\n", (*table_entry));
     if ((*table_entry & PAGE_PRESENT) == 0)
     {
-        uint32_t *table = (uint32_t *)((uint32_t)alloc_blocks(1) + KERNEL_VIRTUAL_BASE);
-        memset((uint8_t *)table, 0, sizeof(*table) * 1024);
-        *table_entry = ((uint32_t)table - KERNEL_VIRTUAL_BASE);
+        uint32_t *table = (uint32_t *)alloc_blocks(1);
+        memset((uint8_t *)((uint32_t)table + KERNEL_VIRTUAL_BASE), 0, sizeof(*table) * 1024);
+        *table_entry = (uint32_t)table;
         // printf("Table enrty created: %ux\n", (uint32_t)table_entry);
         *table_entry |= (PAGE_PRESENT | PAGE_RW);
     }
@@ -60,7 +60,7 @@ void *allocate_page(uint32_t *page)
 
 void free_page(uint32_t *page)
 {
-    void *address = (void *)((*page) & PAGE_ADDR);
+    void *address = (void *)((*page - KERNEL_VIRTUAL_BASE) & PAGE_ADDR);
     if (address)
         free_blocks(address, 1);
     *page &= ~PAGE_PRESENT;
@@ -69,8 +69,9 @@ void free_page(uint32_t *page)
 void map_address(void *virt_address, void *phys_address)
 {
     uint32_t *page = get_page((uint32_t)virt_address);
-    *page |= ((uint32_t)phys_address & PAGE_ADDR);
-    *page |= PAGE_PRESENT;
+    *page &= ~PAGE_ADDR;                           // Clear old address
+    *page |= ((uint32_t)phys_address & PAGE_ADDR); // Set new address
+    *page |= PAGE_PRESENT;                         // Set page present
 }
 
 void unmap_address(void *virt_address)
