@@ -61,7 +61,7 @@ void panic(const char *format, ...)
     va_list args;
     va_start(args, format);
     char *buf = malloc(BUFFER_SIZE);
-    puts("\x1b\x40");
+    puts("\x1b\x40Kernel Panic: ");
     vsprintf(buf, format, args);
     puts(buf);
     free(buf);
