@@ -2,6 +2,9 @@
 #include <irq.h>
 #include <vga.h>
 #include <arch.h>
+#include <mem/malloc.h>
+#include <stdio.h>
+#include <fs/vfs.h>
 
 /* KBDUS means US Keyboard Layout. This is a scancode table
  *  used to layout a standard US keyboard. I have left some
@@ -87,6 +90,8 @@ unsigned char kbdus[2][128] = {
     }};
 
 int shift = 0, caps_lock = 0;
+char *kbd_buf;
+uint32_t buf_start=0, buf_size=0;
 
 /* Handles the keyboard interrupt */
 void keyboard_handler(struct regs *r)
@@ -155,10 +160,37 @@ void keyboard_handler(struct regs *r)
                 ret = ret - 'A' + 'a';
         }
         putch(ret);
+        kbd_buf[(buf_start + buf_size) & (KBD_BUFFER_SZ - 1)] = ret;
+        buf_size++;
     }
 }
 
+uint32_t keyboard_read_fs(fs_node_t *node, uint32_t size, uint32_t units, uint8_t *buffer)
+{
+    uint32_t total_read = 0;
+    for (int i = 0; i < size * units; i++)
+    {
+        if(!buf_size) break;
+        buffer[i] = kbd_buf[buf_start];
+        buf_start = (buf_size + 1)&(KBD_BUFFER_SZ - 1);
+        buf_size--; total_read++;
+    }
+    node->seek_offset += total_read;
+    return total_read;
+}
+
+
 void keyboard_install()
 {
+    kbd_buf = (char *)malloc(KBD_BUFFER_SZ);
+    buf_start = 0;
+    buf_size = 0;
+    stdin_node = malloc(sizeof(fs_node_t));
+    stdin_node->inode = 0;
+    stdin_node->read = keyboard_read_fs;
+    stdin_node->flags |= FS_CHARDEVICE;
+    files_open[0] = malloc(sizeof(FILE));
+    files_open[0]->file = stdin_node;
+    files_open[0]->flags = FILE_READ;
     irq_install_handler(1, keyboard_handler);
 }

@@ -12,8 +12,7 @@ uint32_t *kernel_page_table = 0;
 
 void set_page_dir(uint32_t *page_dir)
 {
-    print_hex(page_dir);
-    cur_page_dir = (uint32_t)page_dir + KERNEL_VIRTUAL_BASE;
+    cur_page_dir = (uint32_t *)((uint32_t)page_dir + KERNEL_VIRTUAL_BASE);
     __asm__ __volatile__("movl %%EAX, %%CR3"
                          :
                          : "a"(page_dir));
@@ -89,10 +88,6 @@ void init_paging()
     kernel_page_dir = (uint32_t *)((uint32_t)alloc_blocks(1) + KERNEL_VIRTUAL_BASE);
     kernel_page_table = (uint32_t *)((uint32_t)alloc_blocks(1) + KERNEL_VIRTUAL_BASE);
 
-    puts("PAging ya");
-
-    print_hex(kernel_page_dir);
-    print_hex(kernel_page_table);
     for (int i = 0; i < 1024; i++)
         kernel_page_dir[i] = PAGE_RW;                                                                                   // Setting all pages to R/W and not present
     kernel_page_dir[KERNEL_PAGE_NUMBER] = ((uint32_t)kernel_page_table - KERNEL_VIRTUAL_BASE) | PAGE_PRESENT | PAGE_RW; // R/W and enabled
@@ -100,12 +95,7 @@ void init_paging()
         kernel_page_table[i] = (i << 12) | PAGE_PRESENT | PAGE_RW;
 
     for (int i = 0; i < 5; i++)
-        print_hex(kernel_page_dir[i]);
-    puts("\n");
-    print_hex(kernel_page_dir[KERNEL_PAGE_NUMBER]);
-    puts("\n");
-    for (int i = 0; i < 5; i++)
         print_hex(kernel_page_table[i]);
-    set_page_dir((uint32_t)kernel_page_dir - KERNEL_VIRTUAL_BASE);
+    set_page_dir((uint32_t *)((uint32_t)kernel_page_dir - KERNEL_VIRTUAL_BASE));
     enable_paging();
 }
