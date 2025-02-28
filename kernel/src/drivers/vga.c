@@ -70,6 +70,8 @@ void putch(char c)
     {
         if (csr_x != 0)
             csr_x--;
+        uint16_t *where = vgamem + (csr_y * 80 + csr_x);
+        *where = (' ' | (attrib << 8)); /* Character AND attributes: color */
     }
     else if (c == '\t')
     {
