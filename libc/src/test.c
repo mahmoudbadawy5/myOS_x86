@@ -26,6 +26,15 @@ int strlen(const char *c)
     return i;
 }
 
+unsigned int read(char* buf, int len)
+{
+    unsigned int ret;
+    __asm__ __volatile__("int $0x80;"
+                         : "=a"(ret)
+                         : "a"(3), "b"(buf), "c"(1), "d"(len), "S"(0));
+    return ret;
+}
+
 unsigned int print(const char *msg)
 {
     unsigned int ret;

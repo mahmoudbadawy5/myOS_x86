@@ -241,7 +241,7 @@ void kmain(unsigned long magic, multiboot_info_t *mbd)
         printf("%s\n", file_content);
     }
 
-    fs_node_t *program = get_node("/test2.bin", root_dir);
+    fs_node_t *program = get_node("/echo.bin", root_dir);
     if (!program)
     {
         printf("Failed to read\n");

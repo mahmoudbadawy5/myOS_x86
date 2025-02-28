@@ -159,7 +159,7 @@ void keyboard_handler(struct regs *r)
             if (caps_lock)
                 ret = ret - 'A' + 'a';
         }
-        putch(ret);
+        // putch(ret);
         kbd_buf[(buf_start + buf_size) & (KBD_BUFFER_SZ - 1)] = ret;
         buf_size++;
     }
