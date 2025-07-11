@@ -80,6 +80,29 @@ void unmap_address(void *virt_address)
     *page &= ~PAGE_PRESENT;
 }
 
+uint32_t *create_user_space_page()
+{
+    /*
+     * Creates a new page dir to be used with a user process
+    */
+    uint32_t* new_page_dir = (uint32_t *)((uint32_t)alloc_blocks(1) + KERNEL_VIRTUAL_BASE);
+    // All pages are user accessible until kernel page
+    for (int i = 0; i < KERNEL_PAGE_NUMBER; i++)
+        new_page_dir[i] = PAGE_RW | PAGE_USER;
+    // Copy kernel pages to be accsible from user space
+    for(int i=KERNEL_PAGE_NUMBER;i<1024;i++)
+        new_page_dir[i] = kernel_page_dir[i]
+    return new_page_dir;
+}
+
+void switch_page_dir(uint32_t* page_dir)
+{
+    if (page_dir != cur_page_dir) {
+        set_page_dir((uint32_t*)((uint32_t)page_dir - KERNEL_VIRTUAL_BASE));
+    }
+}
+
+
 void init_paging()
 {
     /*
