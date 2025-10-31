@@ -3,22 +3,6 @@
 #include <mem/virt_mem.h>
 #include <string.h>
 #include <stdio.h>
-
-static pcb_t process_table[MAX_PROCESSES];
-static uint32_t next_pid = 1;
-static uint32_t current_process_index = 0;
-
-extern void switch_to_process(pcb_t* process); // Implemented in process.asm
-
-void init_multitasking() {
-    memset(process_table, 0, sizeof(process_table));
-}
-
-#include <process.h>
-#include <mem/phys_mem.h>
-#include <mem/virt_mem.h>
-#include <string.h>
-#include <stdio.h>
 #include <fs/vfs.h>
 #include <fs/initrd.h>
 
@@ -26,7 +10,7 @@ static pcb_t process_table[MAX_PROCESSES];
 static uint32_t next_pid = 1;
 static uint32_t current_process_index = 0;
 
-extern fs_node_t *fs_root;
+extern fs_node_t *root_dir;
 
 extern void switch_to_process(pcb_t* process); // Implemented in process.asm
 
@@ -53,7 +37,7 @@ void create_process(char* app_name) {
     uint32_t* old_page_dir = vmm_get_directory();
     set_page_dir((uint32_t*)pcb->regs.cr3);
 
-    fs_node_t* app_node = finddir_fs(fs_root, app_name);
+    fs_node_t* app_node = finddir_fs(root_dir, app_name);
     if (!app_node) {
         panic("App not found");
     }

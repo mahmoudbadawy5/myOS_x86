@@ -3,7 +3,7 @@
 #include <types.h>
 
 #define MAX_PROCESSES 10
-#define PMM_BLOCK_SIZE 8192*2
+
 
 typedef enum {
     PROCESS_STATE_READY,
@@ -20,9 +20,8 @@ typedef struct {
     uint32_t pid;
     process_state_t state;
     registers_t regs;
-    uint8_t* stack;
-    uint8_t* page_dir;
 } pcb_t;
 
 void init_multitasking();
 void create_process(char* app_name);
+void schedule();
