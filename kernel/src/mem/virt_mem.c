@@ -91,7 +91,7 @@ uint32_t *create_user_space_page()
         new_page_dir[i] = PAGE_RW | PAGE_USER;
     // Copy kernel pages to be accsible from user space
     for(int i=KERNEL_PAGE_NUMBER;i<1024;i++)
-        new_page_dir[i] = kernel_page_dir[i]
+        new_page_dir[i] = kernel_page_dir[i];
     return new_page_dir;
 }
 
