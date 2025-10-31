@@ -99,3 +99,19 @@ void init_paging()
     set_page_dir((uint32_t *)((uint32_t)kernel_page_dir - KERNEL_VIRTUAL_BASE));
     enable_paging();
 }
+
+uint32_t* vmm_clone_directory() {
+    uint32_t* new_dir = (uint32_t*)((uint32_t)alloc_blocks(1) + KERNEL_VIRTUAL_BASE);
+    memset(new_dir, 0, 1024 * sizeof(uint32_t));
+
+    // Copy kernel page tables
+    for (int i = KERNEL_PAGE_NUMBER; i < 1024; i++) {
+        new_dir[i] = cur_page_dir[i];
+    }
+
+    return (uint32_t*)((uint32_t)new_dir - KERNEL_VIRTUAL_BASE);
+}
+
+uint32_t* vmm_get_directory() {
+    return (uint32_t*)((uint32_t)cur_page_dir - KERNEL_VIRTUAL_BASE);
+}

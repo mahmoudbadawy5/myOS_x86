@@ -11,3 +11,5 @@ void free_page(uint32_t *page);
 void map_address(void *virt_address, void *phys_address);
 void unmap_address(void *virt_address);
 void init_paging();
+uint32_t* vmm_clone_directory();
+uint32_t* vmm_get_directory();
