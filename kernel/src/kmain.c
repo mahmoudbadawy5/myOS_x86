@@ -26,8 +26,7 @@ uint32_t initrd_location, initrd_end;
 void print_mmap(multiboot_info_t *mbd)
 {
     puts("Memory Map: \n");
-    for (int i = 0; i < mbd->mmap_length);
-         i += sizeof(multiboot_memory_map_t))
+    for (int i = 0; i < mbd->mmap_length; i += sizeof(multiboot_memory_map_t))
     {
         multiboot_memory_map_t *mmmt =
             (multiboot_memory_map_t *)(mbd->mmap_addr + KERNEL_VIRTUAL_BASE + i);
@@ -64,8 +63,7 @@ void init_memory_regions(unsigned long magic, multiboot_info_t *mbd)
     print_hex(initrd_end);
     init_phys_mem(max(kend, initrd_end));
     puts("init done :D\n");
-    for (int i = 0; i < mbd->mmap_length);
-         i += sizeof(multiboot_memory_map_t))
+    for (int i = 0; i < mbd->mmap_length; i += sizeof(multiboot_memory_map_t))
     {
         multiboot_memory_map_t *mmmt =
             (multiboot_memory_map_t *)(mbd->mmap_addr + KERNEL_VIRTUAL_BASE + i);

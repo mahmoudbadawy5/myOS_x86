@@ -1,5 +1,4 @@
-#ifndef PROCESS_H
-#define PROCESS_H
+#pragma once
 
 #include <types.h>
 
@@ -13,17 +12,15 @@ typedef enum {
 } process_state_t;
 
 typedef struct {
-    u32 eax, ebx, ecx, edx, esi, edi, ebp, esp, eip, eflags, cr3;
+    uint32_t eax, ebx, ecx, edx, esi, edi, ebp, esp, eip, eflags, cr3;
 } registers_t;
 
 typedef struct {
-    u32 pid;
+    uint32_t pid;
     process_state_t state;
     registers_t regs;
-    u8* stack;
+    uint8_t* stack;
 } pcb_t;
 
 void init_multitasking();
 void create_process(void (*entry)());
-
-#endif
