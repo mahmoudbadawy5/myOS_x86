@@ -26,7 +26,7 @@ void create_process(void (*entry)()) {
     pcb->state = PROCESS_STATE_READY;
 
     // Allocate a stack for the new process
-    pcb->stack = (uint8_t*)malloc(1);
+    pcb->stack = (uint8_t*)malloc(8192 * 2);
     if (!pcb->stack) {
         printf("Failed to allocate stack for new process\n");
         return;
