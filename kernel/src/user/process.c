@@ -5,10 +5,10 @@
 #include <stdio.h>
 
 static pcb_t process_table[MAX_PROCESSES];
-static u32 next_pid = 1;
-static u32 current_process_index = 0;
+static uint32_t next_pid = 1;
+static uint32_t current_process_index = 0;
 
-extern void switch_to_process(pcb_t* process);
+extern void switch_to_process(pcb_t* process); // Implemented in process.asm
 
 void init_multitasking() {
     memset(process_table, 0, sizeof(process_table));
@@ -16,17 +16,17 @@ void init_multitasking() {
 
 void create_process(void (*entry)()) {
     if (next_pid > MAX_PROCESSES) {
-        printf("Max processes reached\n");
+        panic("Max processes reached\n");
         return;
     }
 
-    u32 process_index = next_pid - 1;
+    uint32_t process_index = next_pid - 1;
     pcb_t* pcb = &process_table[process_index];
     pcb->pid = next_pid++;
     pcb->state = PROCESS_STATE_READY;
 
     // Allocate a stack for the new process
-    pcb->stack = (u8*)pmm_alloc_block();
+    pcb->stack = (uint8_t*)malloc(1);
     if (!pcb->stack) {
         printf("Failed to allocate stack for new process\n");
         return;
@@ -34,16 +34,16 @@ void create_process(void (*entry)()) {
 
     // Setup the initial register state
     memset(&pcb->regs, 0, sizeof(registers_t));
-    pcb->regs.eip = (u32)entry;
-    pcb->regs.esp = (u32)pcb->stack + PMM_BLOCK_SIZE;
+    pcb->regs.eip = (uint32_t)entry;
+    pcb->regs.esp = (uint32_t)pcb->stack + PMM_BLOCK_SIZE;
     pcb->regs.eflags = 0x202; // Enable interrupts
-    pcb->regs.cr3 = (u32)vmm_clone_directory();
+    pcb->regs.cr3 = (uint32_t)vmm_clone_directory();
 
     // Push initial register values onto the stack
-    u32* stack_ptr = (u32*)pcb->regs.esp;
+    uint32_t* stack_ptr = (uint32_t*)pcb->regs.esp;
     *--stack_ptr = 0x202; // EFLAGS
     *--stack_ptr = 0x08;  // CS
-    *--stack_ptr = (u32)entry; // EIP
+    *--stack_ptr = (uint32_t)entry; // EIP
     *--stack_ptr = 0;    // EAX
     *--stack_ptr = 0;    // EBX
     *--stack_ptr = 0;    // ECX
@@ -55,7 +55,7 @@ void create_process(void (*entry)()) {
     *--stack_ptr = 0x10; // ES
     *--stack_ptr = 0x10; // FS
     *--stack_ptr = 0x10; // GS
-    pcb->regs.esp = (u32)stack_ptr;
+    pcb->regs.esp = (uint32_t)stack_ptr;
 }
 
 void schedule() {

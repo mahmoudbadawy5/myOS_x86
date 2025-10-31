@@ -6,6 +6,8 @@
 #define PAGE_ADDR 0xFFFFF000
 
 uint32_t *get_page(uint32_t virt_address);
+void set_page_dir(uint32_t *page_dir);
+void enable_paging();
 void *allocate_page(uint32_t *page);
 void free_page(uint32_t *page);
 void map_address(void *virt_address, void *phys_address);
