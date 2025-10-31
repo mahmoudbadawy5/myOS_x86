@@ -25,4 +25,4 @@ typedef struct {
 } pcb_t;
 
 void init_multitasking();
-void create_process(void (*entry)());
+void create_process(char* app_name);

@@ -14,7 +14,27 @@ void init_multitasking() {
     memset(process_table, 0, sizeof(process_table));
 }
 
-void create_process(void (*entry)()) {
+#include <process.h>
+#include <mem/phys_mem.h>
+#include <mem/virt_mem.h>
+#include <string.h>
+#include <stdio.h>
+#include <fs/vfs.h>
+#include <fs/initrd.h>
+
+static pcb_t process_table[MAX_PROCESSES];
+static uint32_t next_pid = 1;
+static uint32_t current_process_index = 0;
+
+extern fs_node_t *fs_root;
+
+extern void switch_to_process(pcb_t* process); // Implemented in process.asm
+
+void init_multitasking() {
+    memset(process_table, 0, sizeof(process_table));
+}
+
+void create_process(char* app_name) {
     if (next_pid > MAX_PROCESSES) {
         panic("Max processes reached\n");
         return;
@@ -25,37 +45,47 @@ void create_process(void (*entry)()) {
     pcb->pid = next_pid++;
     pcb->state = PROCESS_STATE_READY;
 
-    // Allocate a stack for the new process
-    pcb->stack = (uint8_t*)malloc(8192 * 2);
-    if (!pcb->stack) {
-        printf("Failed to allocate stack for new process\n");
-        return;
-    }
-
     // Setup the initial register state
     memset(&pcb->regs, 0, sizeof(registers_t));
-    pcb->regs.eip = (uint32_t)entry;
-    pcb->regs.esp = (uint32_t)pcb->stack + PMM_BLOCK_SIZE;
     pcb->regs.eflags = 0x202; // Enable interrupts
     pcb->regs.cr3 = (uint32_t)vmm_clone_directory();
 
-    // Push initial register values onto the stack
-    uint32_t* stack_ptr = (uint32_t*)pcb->regs.esp;
-    *--stack_ptr = 0x202; // EFLAGS
-    *--stack_ptr = 0x08;  // CS
-    *--stack_ptr = (uint32_t)entry; // EIP
-    *--stack_ptr = 0;    // EAX
-    *--stack_ptr = 0;    // EBX
-    *--stack_ptr = 0;    // ECX
-    *--stack_ptr = 0;    // EDX
-    *--stack_ptr = 0;    // ESI
-    *--stack_ptr = 0;    // EDI
-    *--stack_ptr = 0;    // EBP
-    *--stack_ptr = 0x10; // DS
-    *--stack_ptr = 0x10; // ES
-    *--stack_ptr = 0x10; // FS
-    *--stack_ptr = 0x10; // GS
-    pcb->regs.esp = (uint32_t)stack_ptr;
+    uint32_t* old_page_dir = vmm_get_directory();
+    set_page_dir((uint32_t*)pcb->regs.cr3);
+
+    fs_node_t* app_node = finddir_fs(fs_root, app_name);
+    if (!app_node) {
+        panic("App not found");
+    }
+
+    // Allocate memory for the app
+    for (uint32_t i = 0; i < app_node->size; i += BLOCK_SIZE) {
+        void* virt_addr = (void*)(0x40000000 + i);
+        void* phys_addr = alloc_blocks(1);
+        map_address(virt_addr, phys_addr);
+    }
+
+    read_fs(app_node, 0, app_node->size, (uint8_t*)0x40000000);
+
+    // Allocate stack
+    for (int i = 0; i < 4; i++) {
+        void* virt_addr = (void*)(0xE0000000 - (i+1)*BLOCK_SIZE);
+        void* phys_addr = alloc_blocks(1);
+        map_address(virt_addr, phys_addr);
+    }
+
+    set_page_dir(old_page_dir);
+
+    pcb->regs.eip = 0x40000000;
+    pcb->regs.esp = 0xE0000000;
+    
+    // User mode segments
+    pcb->regs.cs = 0x1B;
+    pcb->regs.ds = 0x23;
+    pcb->regs.es = 0x23;
+    pcb->regs.fs = 0x23;
+    pcb->regs.gs = 0x23;
+    pcb->regs.ss = 0x23;
 }
 
 void schedule() {

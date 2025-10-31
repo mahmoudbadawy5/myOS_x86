@@ -165,7 +165,7 @@ void kmain(unsigned long magic, multiboot_info_t *mbd)
     init_initrd(initrd_location + KERNEL_VIRTUAL_BASE);
     init_multitasking();
 
-    create_process(app1_main);
+    create_process("test1");
     create_process(app2_main);
 
     printf("Kernel loaded at %08ux, ends at: %08ux\n", kstart, kend);

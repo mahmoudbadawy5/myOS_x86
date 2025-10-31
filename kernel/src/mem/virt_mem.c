@@ -104,9 +104,18 @@ uint32_t* vmm_clone_directory() {
     uint32_t* new_dir = (uint32_t*)((uint32_t)alloc_blocks(1) + KERNEL_VIRTUAL_BASE);
     memset(new_dir, 0, 1024 * sizeof(uint32_t));
 
-    // Copy kernel page tables
-    for (int i = KERNEL_PAGE_NUMBER; i < 1024; i++) {
-        new_dir[i] = cur_page_dir[i];
+    for (int i = 0; i < 1024; i++) {
+        if (cur_page_dir[i] & PAGE_PRESENT) {
+            uint32_t* new_table = (uint32_t*)((uint32_t)alloc_blocks(1) + KERNEL_VIRTUAL_BASE);
+            if (i >= KERNEL_PAGE_NUMBER) {
+                // Deep copy for kernel space
+                memcpy(new_table, (void*)((cur_page_dir[i] & PAGE_ADDR) + KERNEL_VIRTUAL_BASE), 1024 * sizeof(uint32_t));
+            } else {
+                // For user space, just create a new empty table for now
+                memset(new_table, 0, 1024 * sizeof(uint32_t));
+            }
+            new_dir[i] = ((uint32_t)new_table - KERNEL_VIRTUAL_BASE) | (cur_page_dir[i] & 0xFFF);
+        }
     }
 
     return (uint32_t*)((uint32_t)new_dir - KERNEL_VIRTUAL_BASE);
