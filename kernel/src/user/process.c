@@ -163,8 +163,19 @@ void schedule(void)
             __asm__ __volatile__("sti; hlt");
     }
 
+    // CRITICAL: Set TSS ESP0 to the TOP of the kernel stack
+    // This is where the CPU will push the interrupt frame on next user->kernel transition
+    // Kernel stacks are allocated as: KERNEL_STACK_BASE + (process_index + 1) * KERNEL_STACK_SIZE
+    uint32_t process_index = 0;
+    for (uint32_t i = 0; i < num_processes; i++) {
+        if (&process_table[i] == next) {
+            process_index = i;
+            break;
+        }
+    }
+    uint32_t kstack_top = KERNEL_STACK_BASE + ((process_index + 1) * KERNEL_STACK_SIZE);
+    tss_set_stack(0x10, kstack_top);
     
-    tss_set_stack(0x10, next->kernel_stack_top);
     next->state = PROCESS_STATE_RUNNING;
     current_process = next;
     uint32_t *new_dir = (uint32_t*)next->regs.cr3;
@@ -176,10 +187,20 @@ void schedule(void)
     printf("Stack Frame Check:\n");
     printf("EIP: %08ux, CS: %08ux, EFLAGS: %08ux\n", check_frame[0], check_frame[1], check_frame[2]);
     printf("ESP: %08ux, SS: %08ux\n", check_frame[3], check_frame[4]);
+    printf("TSS ESP0 set to: %08ux\n", kstack_top);
 
     printf("OFFSETS: CR3=%d, FIRST_RUN=%d, KSTACK=%d\n", 
         (uint32_t)&((pcb_t*)0)->regs.cr3,
         (uint32_t)&((pcb_t*)0)->first_run,
         (uint32_t)&((pcb_t*)0)->kernel_stack_top);
+    
+    // Enable interrupts before context switch
+    __asm__ __volatile__("sti");
+    
+    // Context switch - this NEVER returns!
+    // It will IRET directly into the next process
     switch_to_process(next);
+    
+    // Should never reach here
+    for(;;);
 }
