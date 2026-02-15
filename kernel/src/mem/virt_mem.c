@@ -24,7 +24,7 @@ void enable_paging()
                          "movl %EAX, %CR0;");
 }
 
-uint32_t *get_page(uint32_t virt_address)
+uint32_t *get_page(uint32_t virt_address, uint32_t additional_flags)
 {
     uint32_t pd_entry = (virt_address) >> 22;
     uint32_t pt_entry = ((virt_address) >> 12) & 0x3FF;
@@ -37,7 +37,7 @@ uint32_t *get_page(uint32_t virt_address)
         memset((uint8_t *)((uint32_t)table + KERNEL_VIRTUAL_BASE), 0, sizeof(*table) * 1024);
         *table_entry = (uint32_t)table;
         // printf("Table enrty created: %ux\n", (uint32_t)table_entry);
-        *table_entry |= (PAGE_PRESENT | PAGE_RW);
+        *table_entry |= (PAGE_PRESENT | PAGE_RW) | additional_flags;
     }
     uint32_t *table = (uint32_t *)((*table_entry + KERNEL_VIRTUAL_BASE) & PAGE_ADDR);
     uint32_t *page_entry = &table[pt_entry];
@@ -66,7 +66,7 @@ void free_page(uint32_t *page)
 
 void map_address(void *virt_address, void *phys_address)
 {
-    uint32_t *page = get_page((uint32_t)virt_address);
+    uint32_t *page = get_page((uint32_t)virt_address, (uint32_t)0);
     *page &= ~PAGE_ADDR;                           // Clear old address
     *page |= ((uint32_t)phys_address & PAGE_ADDR); // Set new address
     *page |= PAGE_PRESENT | PAGE_RW;                // Set page present, kernel only
@@ -74,7 +74,7 @@ void map_address(void *virt_address, void *phys_address)
 
 void map_address_user(void *virt_address, void *phys_address)
 {
-    uint32_t *page = get_page((uint32_t)virt_address);
+    uint32_t *page = get_page((uint32_t)virt_address, (uint32_t)PAGE_USER);
     *page &= ~PAGE_ADDR;
     *page |= ((uint32_t)phys_address & PAGE_ADDR);
     *page |= PAGE_PRESENT | PAGE_RW | PAGE_USER;    // User-accessible (ring 3)
@@ -82,7 +82,7 @@ void map_address_user(void *virt_address, void *phys_address)
 
 void unmap_address(void *virt_address)
 {
-    uint32_t *page = get_page((uint32_t)virt_address);
+    uint32_t *page = get_page((uint32_t)virt_address, (uint32_t)PAGE_USER);
     *page &= ~PAGE_ADDR;
     *page &= ~PAGE_PRESENT;
 }

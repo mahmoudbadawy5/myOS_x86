@@ -1,11 +1,13 @@
 #pragma once
 
+#include <types.h>
+
 #define PAGE_PRESENT 0x00000001
 #define PAGE_RW 0x00000002
 #define PAGE_USER 0x00000004
 #define PAGE_ADDR 0xFFFFF000
 
-uint32_t *get_page(uint32_t virt_address);
+uint32_t *get_page(uint32_t virt_address, uint32_t additional_flags);
 void set_page_dir(uint32_t *page_dir);
 void enable_paging(void);
 void *allocate_page(uint32_t *page);

@@ -208,7 +208,7 @@ void kmain(unsigned long magic, multiboot_info_t *mbd)
 
     printf("Kernel loaded at %08ux, ends at: %08ux\n", kstart, kend);
 
-    print_mmap(mbd);
+    //print_mmap(mbd);
 
     __asm__ __volatile__("sti");
 

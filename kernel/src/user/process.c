@@ -51,7 +51,7 @@ void create_process(const char *app_path)
     pcb->regs.cr3 = (uint32_t)new_dir;
     pcb->regs.eflags = 0x202;
     pcb->regs.eip = USER_CODE_BASE;
-    pcb->regs.esp = USER_STACK_TOP;
+    pcb->regs.esp = USER_STACK_TOP - 4;
     pcb->regs.cs = 0x1B;
     pcb->regs.ds = 0x23;
     pcb->regs.es = 0x23;
@@ -100,9 +100,25 @@ void create_process(const char *app_path)
     frame[0] = USER_CODE_BASE;
     frame[1] = 0x1B;
     frame[2] = 0x202;
-    frame[3] = USER_STACK_TOP;
+    frame[3] = USER_STACK_TOP - 4;
     frame[4] = 0x23;
 
+    
+    // printf("Mapped kernel stack\n");
+    // printf("Calculation: KERNEL_STACK_BASE(%08ux) + process_index(%ud) * KERNEL_STACK_SIZE(%ud): %08ux\n", KERNEL_STACK_BASE, process_index, KERNEL_STACK_SIZE, KERNEL_STACK_BASE + process_index * KERNEL_STACK_SIZE);
+    // printf("kstack_virt: %08ux\n", kstack_virt);
+    // printf("KERNEL_STACK_SIZE: %d\n", KERNEL_STACK_SIZE);
+    // printf("BLOCK_SIZE: %d\n", BLOCK_SIZE);
+    // printf("KERNEL_STACK_SIZE / BLOCK_SIZE: %d\n", KERNEL_STACK_SIZE / BLOCK_SIZE);
+    // printf("KERNEL_STACK_SIZE / BLOCK_SIZE * BLOCK_SIZE: %d\n", KERNEL_STACK_SIZE / BLOCK_SIZE * BLOCK_SIZE);
+    // printf("KERNEL_STACK_SIZE - 20: %d\n", KERNEL_STACK_SIZE - 20);
+    // printf("iret_frame: %08x\n", iret_frame);
+    // printf("frame: %08x\n", frame);
+    // printf("frame[0]: %08ux\n", frame[0]);
+    // printf("frame[1]: %08ux\n", frame[1]);
+    // printf("frame[2]: %08ux\n", frame[2]);
+    // printf("frame[3]: %08ux\n", frame[3]);
+    // printf("frame[4]: %08ux\n", frame[4]);
     pcb->kernel_stack_top = iret_frame;
 
     set_page_dir(old_dir);
@@ -113,6 +129,7 @@ void schedule(void)
     if (num_processes == 0)
         return;
 
+    __asm__ __volatile__("cli");
     uint32_t next_index = 0;
     if (current_process) {
         current_process->state = PROCESS_STATE_READY;
@@ -124,6 +141,7 @@ void schedule(void)
             }
         }
     }
+    printf("We got to this point\n");
 
     pcb_t *next = &process_table[next_index];
     while (next->state == PROCESS_STATE_TERMINATED && num_processes > 1) {
@@ -136,7 +154,17 @@ void schedule(void)
             __asm__ __volatile__("sti; hlt");
     }
 
+    tss_set_stack(0x10, next->kernel_stack_top + 20);
     next->state = PROCESS_STATE_RUNNING;
     current_process = next;
+    uint32_t *new_dir = (uint32_t*)next->regs.cr3;
+    set_page_dir(new_dir); // Temporarily switch to the process's directory
+    printf("Switching to process %d\n", next->pid);
+    printf("next->kernel_stack_top: %08ux\n", next->kernel_stack_top);
+    printf("next->cr3: %08ux\n", next->regs.cr3);
+    uint32_t *check_frame = (uint32_t *)next->kernel_stack_top;
+    printf("Stack Frame Check:\n");
+    printf("EIP: %08ux, CS: %08ux, EFLAGS: %08ux\n", check_frame[0], check_frame[1], check_frame[2]);
+    printf("ESP: %08ux, SS: %08ux\n", check_frame[3], check_frame[4]);
     switch_to_process(next);
 }
