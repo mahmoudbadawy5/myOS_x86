@@ -1,6 +1,7 @@
 print("#include <isr.h>")
 print("#include <idt.h>")
 print("#include <stdio.h>")
+print("#include <mem/virt_mem.h>")
 print("""
 /* These are function prototypes for all of the exception
 *  handlers: The first 32 entries in the IDT are reserved
@@ -84,14 +85,19 @@ print("""
 *  happening and messing up kernel data structures */
 void fault_handler(struct regs *r)
 {
-    /* Is this a fault whose number is from 0 to 31? */
+    switch_to_kernel_page_dir();
     if (r->int_no < 32)
     {
-        /* Display the description for the Exception that occurred.
-        *  In this tutorial, we will simply halt the system using an
-        *  infinite loop */
+        unsigned int cpl = r->cs & 3;
+        puts("\\n--- Exception dump ---");
+        printf("Exception: %s (int_no=%d)\\n", exception_messages[r->int_no], r->int_no);
+        printf("EIP=0x%08x  CS=0x%04x (CPL=%d)  SS=0x%04x\\n", r->eip, r->cs & 0xFFFF, cpl, r->ss & 0xFFFF);
+        printf("ESP=0x%08x  EFLAGS=0x%08x\\n", r->useresp, r->eflags);
+        printf("err_code=0x%08x\\n", r->err_code);
+        printf("EAX=0x%08x EBX=0x%08x ECX=0x%08x EDX=0x%08x\\n", r->eax, r->ebx, r->ecx, r->edx);
+        printf("ESI=0x%08x EDI=0x%08x EBP=0x%08x\\n", r->esi, r->edi, r->ebp);
+        puts("-----------------------\\n");
         panic("%s Exception. System Halted!", exception_messages[r->int_no]);
-        
         for (;;);
     }
 }""")

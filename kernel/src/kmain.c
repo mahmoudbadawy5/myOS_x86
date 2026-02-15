@@ -16,6 +16,8 @@
 #include <fs/initrd.h>
 #include <math.h>
 #include <arch/syscalls.h>
+#include <process.h>
+#include <tss.h>
 
 extern unsigned int code, end;
 unsigned int kstart = (unsigned int)&code - KERNEL_VIRTUAL_BASE;
@@ -170,6 +172,7 @@ void kmain(unsigned long magic, multiboot_info_t *mbd)
 
     printf("Initializing GDT:\t\t[");
     gdt_install();
+    tss_install();
     printf("\x1b\x02OK\x1b\x0F]\n");
 
     printf("Initializing IDT:\t\t[");
@@ -198,13 +201,16 @@ void kmain(unsigned long magic, multiboot_info_t *mbd)
 
     init_initrd(initrd_location + KERNEL_VIRTUAL_BASE);
 
+    printf("Initializing multitasking:\t[");
+    init_multitasking();
+    create_process("/echo.bin");
+    printf("\x1b\x02OK\x1b\x0F]\n");
+
     printf("Kernel loaded at %08ux, ends at: %08ux\n", kstart, kend);
 
     print_mmap(mbd);
 
     __asm__ __volatile__("sti");
-
-    // malloc_test();
 
     char *file_content = malloc(1024);
     fs_node_t *file = get_node("/test_folder/test.txt", root_dir);
@@ -240,29 +246,6 @@ void kmain(unsigned long magic, multiboot_info_t *mbd)
         file_content[file2->size] = '\0';
         printf("%s\n", file_content);
     }
-
-    fs_node_t *program = get_node("/echo.bin", root_dir);
-    if (!program)
-    {
-        printf("Failed to read\n");
-    }
-    else if (!program->read)
-    {
-        printf("Read function is not ready?");
-    }
-    else
-    {
-        void *program_phys_page = alloc_blocks(1);
-        map_address(0, program_phys_page);
-        void *program_content = (void *)0;
-        // char *program_content = malloc(program->size);
-        read_fs(program, program->size, 1, (uint8_t *)program_content);
-        void (*entry_point)() = (void (*)())program_content;
-        entry_point();
-    }
-
-    /* Loop through the memory map and display the values */
-    puts("Hello World!\n");
 
     for (;;)
         ;

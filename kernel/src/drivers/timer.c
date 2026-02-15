@@ -1,16 +1,14 @@
 #include <irq.h>
 #include <isr.h>
 #include <vga.h>
+#include <process.h>
 
 int ticks = 0;
 
 void timer_handler(struct regs *r)
 {
     ticks++;
-    /*if (ticks % 18 == 0)
-    {
-        puts("One second has passed\n");
-    }*/
+    schedule();
 }
 
 void timer_install()

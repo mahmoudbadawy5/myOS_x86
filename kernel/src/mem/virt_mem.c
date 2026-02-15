@@ -3,7 +3,6 @@
 #include <mem/virt_mem.h>
 #include <string.h>
 #include <arch.h>
-
 #include <stdio.h>
 
 uint32_t *cur_page_dir = 0;
@@ -70,7 +69,15 @@ void map_address(void *virt_address, void *phys_address)
     uint32_t *page = get_page((uint32_t)virt_address);
     *page &= ~PAGE_ADDR;                           // Clear old address
     *page |= ((uint32_t)phys_address & PAGE_ADDR); // Set new address
-    *page |= PAGE_PRESENT;                         // Set page present
+    *page |= PAGE_PRESENT | PAGE_RW;                // Set page present, kernel only
+}
+
+void map_address_user(void *virt_address, void *phys_address)
+{
+    uint32_t *page = get_page((uint32_t)virt_address);
+    *page &= ~PAGE_ADDR;
+    *page |= ((uint32_t)phys_address & PAGE_ADDR);
+    *page |= PAGE_PRESENT | PAGE_RW | PAGE_USER;    // User-accessible (ring 3)
 }
 
 void unmap_address(void *virt_address)
@@ -98,4 +105,36 @@ void init_paging()
         print_hex(kernel_page_table[i]);
     set_page_dir((uint32_t *)((uint32_t)kernel_page_dir - KERNEL_VIRTUAL_BASE));
     enable_paging();
+}
+
+uint32_t *vmm_get_directory(void)
+{
+    return (uint32_t *)((uint32_t)cur_page_dir - KERNEL_VIRTUAL_BASE);
+}
+
+uint32_t *vmm_clone_directory(void)
+{
+    uint32_t *new_dir = (uint32_t *)((uint32_t)alloc_blocks(1) + KERNEL_VIRTUAL_BASE);
+    memset((unsigned char *)new_dir, 0, 1024 * sizeof(uint32_t));
+
+    for (uint32_t i = 0; i < 1024; i++) {
+        if (!(cur_page_dir[i] & PAGE_PRESENT))
+            continue;
+        uint32_t *new_table = (uint32_t *)((uint32_t)alloc_blocks(1) + KERNEL_VIRTUAL_BASE);
+        uint32_t *old_table = (uint32_t *)((cur_page_dir[i] & PAGE_ADDR) + KERNEL_VIRTUAL_BASE);
+        if (i >= KERNEL_PAGE_NUMBER) {
+            memcpy((unsigned char *)new_table, (const unsigned char *)old_table, 1024 * sizeof(uint32_t));
+        } else {
+            memset((unsigned char *)new_table, 0, 1024 * sizeof(uint32_t));
+        }
+        new_dir[i] = ((uint32_t)new_table - KERNEL_VIRTUAL_BASE) | (cur_page_dir[i] & 0xFFF);
+    }
+
+    return (uint32_t *)((uint32_t)new_dir - KERNEL_VIRTUAL_BASE);
+}
+
+void switch_to_kernel_page_dir(void)
+{
+    if (kernel_page_dir)
+        set_page_dir((uint32_t *)((uint32_t)kernel_page_dir - KERNEL_VIRTUAL_BASE));
 }

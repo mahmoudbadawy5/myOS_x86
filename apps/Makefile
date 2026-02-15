@@ -1,6 +1,6 @@
 CC_FLAGS = -fno-stack-protector -m32 -Wall -O -fstrength-reduce -fomit-frame-pointer -finline-functions -nostdinc -fno-builtin -fno-pie
 
-all: test1.bin test2.bin
+all: test1.bin test2.bin echo.bin
 
 clean:
 	rm -f *.o *.bin
