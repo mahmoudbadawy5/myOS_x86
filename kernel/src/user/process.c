@@ -43,8 +43,24 @@ void create_process(const char *app_path)
         return;
     }
 
+    uint32_t kstack_virt = KERNEL_STACK_BASE + (num_processes * KERNEL_STACK_SIZE);
+    for (int i=0; i < KERNEL_STACK_SIZE/4096; i++) {
+        map_address((void*)(kstack_virt + i*4096), alloc_blocks(1));
+    }
+
+    uint32_t kstack_base = kstack_virt + KERNEL_STACK_SIZE;
+    uint32_t iret_frame = (kstack_base - 32) & ~0xF;
+    uint32_t *frame = (uint32_t *)iret_frame;
+    frame[0] = USER_CODE_BASE;
+    frame[1] = 0x1B;
+    frame[2] = 0x202;
+    frame[3] = USER_STACK_TOP - 16;
+    frame[4] = 0x23;
+    pcb->kernel_stack_top = iret_frame;
+
     uint32_t *old_dir = vmm_get_directory();
     uint32_t *new_dir = vmm_clone_directory();
+    printf("new_dir (Process creation): %08ux\n", new_dir);
     set_page_dir(new_dir);
 
     memset((unsigned char *)&pcb->regs, 0, sizeof(registers_t));
@@ -83,28 +99,21 @@ void create_process(const char *app_path)
         map_address_user(virt, phys);
     }
 
-    uint32_t kstack_virt = KERNEL_STACK_BASE + process_index * KERNEL_STACK_SIZE;
-    for (uint32_t i = 0; i < KERNEL_STACK_SIZE / BLOCK_SIZE; i++) {
-        void *virt = (void *)(kstack_virt + i * BLOCK_SIZE);
-        void *phys = alloc_blocks(1);
-        if (!phys) {
-            set_page_dir(old_dir);
-            num_processes--;
-            return;
-        }
-        map_address(virt, phys);
-    }
-
-    uint32_t iret_frame = kstack_virt + KERNEL_STACK_SIZE - 20;
-    uint32_t *frame = (uint32_t *)iret_frame;
-    frame[0] = USER_CODE_BASE;
-    frame[1] = 0x1B;
-    frame[2] = 0x202;
-    frame[3] = USER_STACK_TOP - 4;
-    frame[4] = 0x23;
+    // uint32_t kstack_virt = KERNEL_STACK_BASE + process_index * KERNEL_STACK_SIZE;
+    // for (uint32_t i = 0; i < KERNEL_STACK_SIZE / BLOCK_SIZE; i++) {
+    //     void *virt = (void *)(kstack_virt + i * BLOCK_SIZE);
+    //     void *phys = alloc_blocks(1);
+    //     if (!phys) {
+    //         set_page_dir(old_dir);
+    //         num_processes--;
+    //         return;
+    //     }
+    //     map_address(virt, phys);
+    // }
 
     
-    // printf("Mapped kernel stack\n");
+    
+    printf("Mapped kernel stack\n");
     // printf("Calculation: KERNEL_STACK_BASE(%08ux) + process_index(%ud) * KERNEL_STACK_SIZE(%ud): %08ux\n", KERNEL_STACK_BASE, process_index, KERNEL_STACK_SIZE, KERNEL_STACK_BASE + process_index * KERNEL_STACK_SIZE);
     // printf("kstack_virt: %08ux\n", kstack_virt);
     // printf("KERNEL_STACK_SIZE: %d\n", KERNEL_STACK_SIZE);
@@ -112,14 +121,14 @@ void create_process(const char *app_path)
     // printf("KERNEL_STACK_SIZE / BLOCK_SIZE: %d\n", KERNEL_STACK_SIZE / BLOCK_SIZE);
     // printf("KERNEL_STACK_SIZE / BLOCK_SIZE * BLOCK_SIZE: %d\n", KERNEL_STACK_SIZE / BLOCK_SIZE * BLOCK_SIZE);
     // printf("KERNEL_STACK_SIZE - 20: %d\n", KERNEL_STACK_SIZE - 20);
-    // printf("iret_frame: %08x\n", iret_frame);
-    // printf("frame: %08x\n", frame);
-    // printf("frame[0]: %08ux\n", frame[0]);
-    // printf("frame[1]: %08ux\n", frame[1]);
-    // printf("frame[2]: %08ux\n", frame[2]);
-    // printf("frame[3]: %08ux\n", frame[3]);
-    // printf("frame[4]: %08ux\n", frame[4]);
-    pcb->kernel_stack_top = iret_frame;
+    printf("iret_frame: %08ux\n", iret_frame);
+    printf("frame: %08ux\n", frame);
+    printf("frame[0]: %08ux\n", frame[0]);
+    printf("frame[1]: %08ux\n", frame[1]);
+    printf("frame[2]: %08ux\n", frame[2]);
+    printf("frame[3]: %08ux\n", frame[3]);
+    printf("frame[4]: %08ux\n", frame[4]);
+    printf("pcb->kernel_stack_top: %08ux\n", pcb->kernel_stack_top);
 
     set_page_dir(old_dir);
 }
@@ -154,11 +163,12 @@ void schedule(void)
             __asm__ __volatile__("sti; hlt");
     }
 
-    tss_set_stack(0x10, next->kernel_stack_top + 20);
+    
+    tss_set_stack(0x10, next->kernel_stack_top);
     next->state = PROCESS_STATE_RUNNING;
     current_process = next;
     uint32_t *new_dir = (uint32_t*)next->regs.cr3;
-    set_page_dir(new_dir); // Temporarily switch to the process's directory
+    printf("new_dir: %08ux\n", new_dir);
     printf("Switching to process %d\n", next->pid);
     printf("next->kernel_stack_top: %08ux\n", next->kernel_stack_top);
     printf("next->cr3: %08ux\n", next->regs.cr3);
@@ -166,5 +176,10 @@ void schedule(void)
     printf("Stack Frame Check:\n");
     printf("EIP: %08ux, CS: %08ux, EFLAGS: %08ux\n", check_frame[0], check_frame[1], check_frame[2]);
     printf("ESP: %08ux, SS: %08ux\n", check_frame[3], check_frame[4]);
+
+    printf("OFFSETS: CR3=%d, FIRST_RUN=%d, KSTACK=%d\n", 
+        (uint32_t)&((pcb_t*)0)->regs.cr3,
+        (uint32_t)&((pcb_t*)0)->first_run,
+        (uint32_t)&((pcb_t*)0)->kernel_stack_top);
     switch_to_process(next);
 }

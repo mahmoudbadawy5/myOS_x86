@@ -38,6 +38,9 @@ uint32_t *get_page(uint32_t virt_address, uint32_t additional_flags)
         *table_entry = (uint32_t)table;
         // printf("Table enrty created: %ux\n", (uint32_t)table_entry);
         *table_entry |= (PAGE_PRESENT | PAGE_RW) | additional_flags;
+        if (pd_entry >= KERNEL_PAGE_NUMBER) {
+            kernel_page_dir[pd_entry] = *table_entry;
+        }
     }
     uint32_t *table = (uint32_t *)((*table_entry + KERNEL_VIRTUAL_BASE) & PAGE_ADDR);
     uint32_t *page_entry = &table[pt_entry];
@@ -120,14 +123,15 @@ uint32_t *vmm_clone_directory(void)
     for (uint32_t i = 0; i < 1024; i++) {
         if (!(cur_page_dir[i] & PAGE_PRESENT))
             continue;
-        uint32_t *new_table = (uint32_t *)((uint32_t)alloc_blocks(1) + KERNEL_VIRTUAL_BASE);
-        uint32_t *old_table = (uint32_t *)((cur_page_dir[i] & PAGE_ADDR) + KERNEL_VIRTUAL_BASE);
         if (i >= KERNEL_PAGE_NUMBER) {
-            memcpy((unsigned char *)new_table, (const unsigned char *)old_table, 1024 * sizeof(uint32_t));
+            //memcpy((unsigned char *)new_table, (const unsigned char *)old_table, 1024 * sizeof(uint32_t));
+            new_dir[i] = cur_page_dir[i];
         } else {
+            uint32_t *new_table = (uint32_t *)((uint32_t)alloc_blocks(1) + KERNEL_VIRTUAL_BASE);
+            //uint32_t *old_table = (uint32_t *)((cur_page_dir[i] & PAGE_ADDR) + KERNEL_VIRTUAL_BASE);
             memset((unsigned char *)new_table, 0, 1024 * sizeof(uint32_t));
+            new_dir[i] = ((uint32_t)new_table - KERNEL_VIRTUAL_BASE) | (cur_page_dir[i] & 0xFFF);
         }
-        new_dir[i] = ((uint32_t)new_table - KERNEL_VIRTUAL_BASE) | (cur_page_dir[i] & 0xFFF);
     }
 
     return (uint32_t *)((uint32_t)new_dir - KERNEL_VIRTUAL_BASE);
