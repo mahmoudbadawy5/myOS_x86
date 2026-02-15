@@ -21,6 +21,7 @@ switch_to_process:
     
     ; Save current ESP (which points to interrupt frame on kernel stack)
     mov [ecx + PCB_OFFSET_KERNEL_STACK], esp
+    ; Note: first_run is already 0 (that's why we're here), so no need to set it
     
 .load_next:
     ; Update current_process pointer
@@ -30,14 +31,14 @@ switch_to_process:
     mov ecx, [eax + PCB_OFFSET_CR3]
     mov cr3, ecx
     
-    ; Load new process's kernel stack
-    mov esp, [eax + PCB_OFFSET_KERNEL_STACK]
-    
-    ; Check if this is the first run of the new process
+    ; Check if this is the first run BEFORE loading the stack
     cmp dword [eax + PCB_OFFSET_FIRST_RUN], 0
     jnz .first_run
     
     ; NOT first run - restore interrupt frame and return to process
+    ; Load saved kernel stack pointer
+    mov esp, [eax + PCB_OFFSET_KERNEL_STACK]
+    
     ; Stack currently has the saved interrupt frame:
     ; [esp+0]  = GS
     ; [esp+4]  = FS  
@@ -69,10 +70,27 @@ switch_to_process:
     
 .first_run:
     ; First run - jump directly to user mode
-    ; Stack has IRET frame: [EIP, CS, EFLAGS, ESP, SS]
+    ; Load the IRET frame
+    mov esp, [eax + PCB_OFFSET_KERNEL_STACK]
+    
+    ; Clear first_run flag so next time we'll save context properly
+    mov dword [eax + PCB_OFFSET_FIRST_RUN], 0
+    
+    ; Stack now has IRET frame: [EIP, CS, EFLAGS, ESP, SS]
+    ; CRITICAL: Set data segments to user mode BEFORE iretd
+    ; The user code needs these to access data at CPL=3
+    ; This is safe because:
+    ; 1. Interrupts are disabled (CLI in schedule, IRET will re-enable)
+    ; 2. We're about to iretd immediately, so no kernel code will run
+    ; 3. Loading user segments at CPL=0 is legal
     mov ax, 0x23
     mov ds, ax
     mov es, ax
     mov fs, ax
     mov gs, ax
+    ; Now do the IRET - this will:
+    ; - Pop EIP (user code), CS (0x1B = CPL 3), EFLAGS (IF=1)
+    ; - Pop ESP (user stack), SS (0x23 = user data)
+    ; - Switch to CPL=3 and jump to user code
+    ; - Re-enable interrupts (IF flag in EFLAGS)
     iretd

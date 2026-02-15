@@ -142,7 +142,8 @@ void schedule(void)
     uint32_t next_index = 0;
     if (current_process) {
         current_process->state = PROCESS_STATE_READY;
-        current_process->first_run = 0;
+        // DON'T set first_run = 0 here!
+        // The assembly code will handle it after actually saving context
         for (uint32_t i = 0; i < num_processes; i++) {
             if (&process_table[i] == current_process) {
                 next_index = (i + 1) % num_processes;
@@ -194,8 +195,10 @@ void schedule(void)
         (uint32_t)&((pcb_t*)0)->first_run,
         (uint32_t)&((pcb_t*)0)->kernel_stack_top);
     
-    // Enable interrupts before context switch
-    __asm__ __volatile__("sti");
+    // DON'T enable interrupts here! 
+    // The IRET will restore EFLAGS which has IF=1, re-enabling interrupts
+    // If we enable them now, an interrupt could fire mid-context-switch
+    // __asm__ __volatile__("sti");  // REMOVED!
     
     // Context switch - this NEVER returns!
     // It will IRET directly into the next process
