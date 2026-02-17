@@ -3,7 +3,6 @@
 #include <mem/virt_mem.h>
 #include <string.h>
 #include <arch.h>
-
 #include <stdio.h>
 
 uint32_t *cur_page_dir = 0;
@@ -25,7 +24,7 @@ void enable_paging()
                          "movl %EAX, %CR0;");
 }
 
-uint32_t *get_page(uint32_t virt_address)
+uint32_t *get_page(uint32_t virt_address, uint32_t additional_flags)
 {
     uint32_t pd_entry = (virt_address) >> 22;
     uint32_t pt_entry = ((virt_address) >> 12) & 0x3FF;
@@ -38,7 +37,10 @@ uint32_t *get_page(uint32_t virt_address)
         memset((uint8_t *)((uint32_t)table + KERNEL_VIRTUAL_BASE), 0, sizeof(*table) * 1024);
         *table_entry = (uint32_t)table;
         // printf("Table enrty created: %ux\n", (uint32_t)table_entry);
-        *table_entry |= (PAGE_PRESENT | PAGE_RW);
+        *table_entry |= (PAGE_PRESENT | PAGE_RW) | additional_flags;
+        if (pd_entry >= KERNEL_PAGE_NUMBER) {
+            kernel_page_dir[pd_entry] = *table_entry;
+        }
     }
     uint32_t *table = (uint32_t *)((*table_entry + KERNEL_VIRTUAL_BASE) & PAGE_ADDR);
     uint32_t *page_entry = &table[pt_entry];
@@ -67,15 +69,23 @@ void free_page(uint32_t *page)
 
 void map_address(void *virt_address, void *phys_address)
 {
-    uint32_t *page = get_page((uint32_t)virt_address);
+    uint32_t *page = get_page((uint32_t)virt_address, (uint32_t)0);
     *page &= ~PAGE_ADDR;                           // Clear old address
     *page |= ((uint32_t)phys_address & PAGE_ADDR); // Set new address
-    *page |= PAGE_PRESENT;                         // Set page present
+    *page |= PAGE_PRESENT | PAGE_RW;                // Set page present, kernel only
+}
+
+void map_address_user(void *virt_address, void *phys_address)
+{
+    uint32_t *page = get_page((uint32_t)virt_address, (uint32_t)PAGE_USER);
+    *page &= ~PAGE_ADDR;
+    *page |= ((uint32_t)phys_address & PAGE_ADDR);
+    *page |= PAGE_PRESENT | PAGE_RW | PAGE_USER;    // User-accessible (ring 3)
 }
 
 void unmap_address(void *virt_address)
 {
-    uint32_t *page = get_page((uint32_t)virt_address);
+    uint32_t *page = get_page((uint32_t)virt_address, (uint32_t)PAGE_USER);
     *page &= ~PAGE_ADDR;
     *page &= ~PAGE_PRESENT;
 }
@@ -98,4 +108,37 @@ void init_paging()
         print_hex(kernel_page_table[i]);
     set_page_dir((uint32_t *)((uint32_t)kernel_page_dir - KERNEL_VIRTUAL_BASE));
     enable_paging();
+}
+
+uint32_t *vmm_get_directory(void)
+{
+    return (uint32_t *)((uint32_t)cur_page_dir - KERNEL_VIRTUAL_BASE);
+}
+
+uint32_t *vmm_clone_directory(void)
+{
+    uint32_t *new_dir = (uint32_t *)((uint32_t)alloc_blocks(1) + KERNEL_VIRTUAL_BASE);
+    memset((unsigned char *)new_dir, 0, 1024 * sizeof(uint32_t));
+
+    for (uint32_t i = 0; i < 1024; i++) {
+        if (!(cur_page_dir[i] & PAGE_PRESENT))
+            continue;
+        if (i >= KERNEL_PAGE_NUMBER) {
+            //memcpy((unsigned char *)new_table, (const unsigned char *)old_table, 1024 * sizeof(uint32_t));
+            new_dir[i] = cur_page_dir[i];
+        } else {
+            uint32_t *new_table = (uint32_t *)((uint32_t)alloc_blocks(1) + KERNEL_VIRTUAL_BASE);
+            //uint32_t *old_table = (uint32_t *)((cur_page_dir[i] & PAGE_ADDR) + KERNEL_VIRTUAL_BASE);
+            memset((unsigned char *)new_table, 0, 1024 * sizeof(uint32_t));
+            new_dir[i] = ((uint32_t)new_table - KERNEL_VIRTUAL_BASE) | (cur_page_dir[i] & 0xFFF);
+        }
+    }
+
+    return (uint32_t *)((uint32_t)new_dir - KERNEL_VIRTUAL_BASE);
+}
+
+void switch_to_kernel_page_dir(void)
+{
+    if (kernel_page_dir)
+        set_page_dir((uint32_t *)((uint32_t)kernel_page_dir - KERNEL_VIRTUAL_BASE));
 }

@@ -4,7 +4,7 @@ c_obj	=  $(patsubst src/%, build/%, $(c_src:.c=.o))
 asm_obj	=  $(patsubst src/%, build/%, $(asm_src:.asm=.o))
 all_obj = $(c_obj) $(asm_obj) build/arch/isr.o build/arch/irq.o build/arch/isr_asm.o build/arch/irq_asm.o
 
-CC_FLAGS = -fno-stack-protector -m32 -Wall -O -fstrength-reduce -fomit-frame-pointer -finline-functions -nostdinc -fno-builtin -fno-pie
+CC_FLAGS = -fno-stack-protector -m32 -Wall -O -fstrength-reduce -fomit-frame-pointer -finline-functions -nostdinc -fno-builtin -fno-pie -g
 CC=i686-elf-gcc
 CXX=i686-elf-g++
 
@@ -16,7 +16,7 @@ kernel.bin: $(all_obj)
 	@echo "[LD] $@"
 	@echo "Linking $(all_obj)"
 	@rm -f kernel.bin
-	@$(CC)  -ffreestanding -O2 -nostdlib -m32 -T link.ld -o $@ $(all_obj)
+	@$(CC)  -g -ffreestanding -O2 -nostdlib -m32 -T link.ld -o $@ $(all_obj)
 
 build/%.o : src/%.asm
 	@echo "[ASM] $@"
