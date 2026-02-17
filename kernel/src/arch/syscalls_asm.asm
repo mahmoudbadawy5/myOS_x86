@@ -2,6 +2,7 @@ MAX_SYSCALL EQU 6
 
 global handle_syscalls
 extern syscalls
+extern print_hex
 
 handle_syscalls:
     ; Already on stack (by CPU): user_SS, user_ESP, eflags, user_CS, user_EIP
@@ -15,6 +16,13 @@ handle_syscalls:
     push FS
     push ES
     push DS
+
+    mov AX, 0x10      ; Kernel data segment
+    mov DS, AX
+    mov ES, AX
+    mov FS, AX
+    mov GS, AX
+
     push EBP
     push EDI
     push ESI
@@ -28,20 +36,21 @@ handle_syscalls:
     mov EAX, [ESP+4+44]
     call [syscalls + 4*EAX]
     mov [ESP+4+44], EAX
-    add ESP, 4
+    add ESP, 8
     pop EBX
     pop ECX
     pop EDX
     pop ESI
+    call print_hex
     pop EDI
     pop EBP
     pop DS
     pop ES
     pop FS
     pop GS
-    add ESP, 4
+    pop EAX
     iretd
 
 invalid_syscall:
     mov EAX, -1
-    iret
+    iretd

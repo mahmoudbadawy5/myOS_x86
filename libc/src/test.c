@@ -43,3 +43,11 @@ unsigned int print(const char *msg)
                          : "a"(4), "b"(msg), "c"(1), "d"(strlen(msg)), "S"(1));
     return ret;
 }
+
+unsigned int exit() {
+    unsigned int ret;
+    __asm__ __volatile__("int $0x80;"
+                         : "=a"(ret)
+                         : "a"(5));
+    return ret;
+}

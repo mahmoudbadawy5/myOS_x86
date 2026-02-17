@@ -27,7 +27,7 @@ int32_t syscall_test0(syscall_regs_t *regs)
 int32_t syscall_test1(syscall_regs_t *regs)
 {
     printf("System call 1 (test): %d %d\n", regs->eax, regs->ebx);
-    return 0;
+    return 15;
 }
 
 /*
