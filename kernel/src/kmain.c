@@ -154,6 +154,44 @@ void init_memory_regions(unsigned long magic, multiboot_info_t *mbd)
     deinitialize_memory_region(0, kend + MAX_BLOCK_ENTRIES * 4); // reserve first 1M for grub/bios + Reserve kernel space + (old page tables)
 }
 
+void test_files() {
+        char *file_content = malloc(1024);
+    fs_node_t *file = get_node("/test_folder/test.txt", root_dir);
+    if (!file)
+    {
+        printf("Failed to read\n");
+    }
+    else if (!file->read)
+    {
+        printf("Read function is not ready?");
+    }
+    else
+    {
+        read_fs(file, file->size, 1, (uint8_t *)file_content);
+        file_content[file->size] = '\0';
+        printf("%s\n", file_content);
+    }
+
+    printf("\n\n\n");
+
+    fs_node_t *file2 = get_node("///test_folder//depth2_folder//depth3_file.txt", root_dir);
+    if (!file2)
+    {
+        printf("Failed to read\n");
+    }
+    else if (!file2->read)
+    {
+        printf("Read function is not ready?");
+    }
+    else
+    {
+        read_fs(file2, file2->size, 1, (uint8_t *)file_content);
+        file_content[file2->size] = '\0';
+        printf("%s\n", file_content);
+    }
+
+}
+
 void kmain(unsigned long magic, multiboot_info_t *mbd)
 {
     init_video();
@@ -203,49 +241,19 @@ void kmain(unsigned long magic, multiboot_info_t *mbd)
 
     printf("Initializing multitasking:\t[");
     init_multitasking();
-    create_process("/echo.bin");
     printf("\x1b\x02OK\x1b\x0F]\n");
 
     printf("Kernel loaded at %08ux, ends at: %08ux\n", kstart, kend);
 
     //print_mmap(mbd);
 
-    __asm__ __volatile__("sti");
 
-    char *file_content = malloc(1024);
-    fs_node_t *file = get_node("/test_folder/test.txt", root_dir);
-    if (!file)
-    {
-        printf("Failed to read\n");
-    }
-    else if (!file->read)
-    {
-        printf("Read function is not ready?");
-    }
-    else
-    {
-        read_fs(file, file->size, 1, (uint8_t *)file_content);
-        file_content[file->size] = '\0';
-        printf("%s\n", file_content);
-    }
+    create_process("/inf1.bin");
+    create_process("/inf2.bin");
 
-    printf("\n\n\n");
+    // __asm__ __volatile__("sti");
 
-    fs_node_t *file2 = get_node("///test_folder//depth2_folder//depth3_file.txt", root_dir);
-    if (!file2)
-    {
-        printf("Failed to read\n");
-    }
-    else if (!file2->read)
-    {
-        printf("Read function is not ready?");
-    }
-    else
-    {
-        read_fs(file2, file2->size, 1, (uint8_t *)file_content);
-        file_content[file2->size] = '\0';
-        printf("%s\n", file_content);
-    }
+    test_files();
 
     for (;;)
         ;
