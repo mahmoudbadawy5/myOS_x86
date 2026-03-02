@@ -9,6 +9,7 @@ PCB_OFFSET_CR3           equ 56
 ; Called from timer interrupt, always switches context via IRET
 switch_to_process:
     mov eax, [esp + 4]              ; Get next process pointer
+    mov edx, [esp + 8]             ; Get current trap frame
     mov ecx, [current_process]      ; Get current process pointer
     
     ; Save current process context if it exists
@@ -20,7 +21,7 @@ switch_to_process:
     jnz .load_next                  ; First run, nothing to save
     
     ; Save current ESP (which points to interrupt frame on kernel stack)
-    mov [ecx + PCB_OFFSET_KERNEL_STACK], esp
+    mov [ecx + PCB_OFFSET_KERNEL_STACK], edx
     ; Note: first_run is already 0 (that's why we're here), so no need to set it
     
 .load_next:

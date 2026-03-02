@@ -1,8 +1,7 @@
-MAX_SYSCALL EQU 6
+MAX_SYSCALL EQU 7
 
 global handle_syscalls
 extern syscalls
-extern print_hex
 
 handle_syscalls:
     ; Already on stack (by CPU): user_SS, user_ESP, eflags, user_CS, user_EIP
@@ -41,7 +40,6 @@ handle_syscalls:
     pop ECX
     pop EDX
     pop ESI
-    call print_hex
     pop EDI
     pop EBP
     pop DS
