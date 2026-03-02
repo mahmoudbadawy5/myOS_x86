@@ -134,7 +134,7 @@ void schedule(struct regs *r)
     tss_set_stack(0x10, kstack_top);
     
     next->state = PROCESS_STATE_RUNNING;
-    __asm__ __volatile__("sti");
+    // __asm__ __volatile__("sti");
     switch_to_process(next, r);
        
     // Should never reach here
