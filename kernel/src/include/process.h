@@ -1,6 +1,7 @@
 #pragma once
 
 #include <types.h>
+#include <isr.h>
 
 #define MAX_PROCESSES 10
 #define USER_CODE_BASE  0x40000000
@@ -10,6 +11,7 @@
 #define KERNEL_STACK_BASE 0xC0400000
 
 typedef enum {
+    PROCESS_STATE_NEW,
     PROCESS_STATE_READY,
     PROCESS_STATE_RUNNING,
     PROCESS_STATE_BLOCKED,
@@ -31,6 +33,6 @@ typedef struct pcb {
 
 void init_multitasking(void);
 void create_process(const char *app_name);
-void schedule(void);
+void schedule(struct regs *r);
 
 extern pcb_t *current_process;
