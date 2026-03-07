@@ -250,6 +250,7 @@ void kmain(unsigned long magic, multiboot_info_t *mbd)
 
     create_process("/inf1.bin");
     create_process("/inf2.bin");
+    create_process("/test1.bin");
 
     __asm__ __volatile__("sti");
 
