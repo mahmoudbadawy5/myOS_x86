@@ -34,8 +34,7 @@ void create_process(const char *app_path)
     pcb_t *pcb = &process_table[process_index];
     num_processes++;
     pcb->pid = next_pid++;
-    pcb->state = PROCESS_STATE_READY;
-    pcb->first_run = 1;
+    pcb->state = PROCESS_STATE_NEW;
     
     fs_node_t *app_node = get_node((char *)app_path, root_dir);
     if (!app_node || !(app_node->flags & FS_FILE)) {
@@ -116,7 +115,7 @@ void schedule(struct regs *r)
     int original_process_id = cur_proccess_id;
     do {
         cur_proccess_id = (cur_proccess_id + 1) % num_processes;
-        if(process_table[cur_proccess_id].state == PROCESS_STATE_READY) break;
+        if(process_table[cur_proccess_id].state == PROCESS_STATE_READY || process_table[cur_proccess_id].state == PROCESS_STATE_NEW) break;
     } while(cur_proccess_id != original_process_id);
 
     pcb_t *next = &process_table[cur_proccess_id];
@@ -133,8 +132,6 @@ void schedule(struct regs *r)
     uint32_t kstack_top = KERNEL_STACK_BASE + ((cur_proccess_id + 1) * KERNEL_STACK_SIZE);
     tss_set_stack(0x10, kstack_top);
     
-    next->state = PROCESS_STATE_RUNNING;
-    // __asm__ __volatile__("sti");
     switch_to_process(next, r);
        
     // Should never reach here

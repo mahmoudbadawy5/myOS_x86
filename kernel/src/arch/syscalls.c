@@ -80,7 +80,7 @@ int32_t syscall_exit(syscall_regs_t *regs)
     if (current_process) {
         current_process->state = PROCESS_STATE_TERMINATED;
         current_process = NULL;
-        schedule();
+        schedule(regs);
     }
     return 0;
 }
@@ -88,6 +88,6 @@ int32_t syscall_exit(syscall_regs_t *regs)
 int32_t syscall_yield(syscall_regs_t *regs)
 {
     (void)regs;
-    schedule();
+    schedule(regs);
     return 0;
 }

@@ -1,9 +1,16 @@
 [GLOBAL switch_to_process]
 [EXTERN current_process]
 
-PCB_OFFSET_FIRST_RUN     equ 8
-PCB_OFFSET_KERNEL_STACK  equ 12
-PCB_OFFSET_CR3           equ 56
+PCB_OFFSET_PROCESS_STATE    equ 4
+PCB_OFFSET_KERNEL_STACK     equ 8
+PCB_OFFSET_CR3              equ 52
+
+
+PROCESS_STATE_NEW           equ 0
+PROCESS_STATE_READY         equ 1
+PROCESS_STATE_RUNNING       equ 2
+PROCESS_STATE_BLOCKED       equ 3
+PROCESS_STATE_TERMINATED    equ 4
 
 ; Context switch function - NEVER RETURNS!
 ; Called from timer interrupt, always switches context via IRET
@@ -17,8 +24,8 @@ switch_to_process:
     jz .load_next                   ; No current process, just load next
     
     ; Check if current process is running for first time
-    cmp dword [ecx + PCB_OFFSET_FIRST_RUN], 0
-    jnz .load_next                  ; First run, nothing to save
+    cmp dword [ecx + PCB_OFFSET_PROCESS_STATE], PROCESS_STATE_NEW
+    jz .load_next                  ; First run, nothing to save
     
     ; Save current ESP (which points to interrupt frame on kernel stack)
     mov [ecx + PCB_OFFSET_KERNEL_STACK], edx
@@ -33,8 +40,9 @@ switch_to_process:
     mov cr3, ecx
     
     ; Check if this is the first run BEFORE loading the stack
-    cmp dword [eax + PCB_OFFSET_FIRST_RUN], 0
-    jnz .first_run
+    cmp dword [eax + PCB_OFFSET_PROCESS_STATE], PROCESS_STATE_NEW
+    mov dword [eax + PCB_OFFSET_PROCESS_STATE], PROCESS_STATE_RUNNING
+    jz .first_run
     
     ; NOT first run - restore interrupt frame and return to process
     ; Load saved kernel stack pointer
@@ -73,10 +81,7 @@ switch_to_process:
     ; First run - jump directly to user mode
     ; Load the IRET frame
     mov esp, [eax + PCB_OFFSET_KERNEL_STACK]
-    
-    ; Clear first_run flag so next time we'll save context properly
-    mov dword [eax + PCB_OFFSET_FIRST_RUN], 0
-    
+        
     ; Stack now has IRET frame: [EIP, CS, EFLAGS, ESP, SS]
     ; CRITICAL: Set data segments to user mode BEFORE iretd
     ; The user code needs these to access data at CPL=3

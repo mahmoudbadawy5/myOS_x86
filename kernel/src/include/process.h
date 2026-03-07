@@ -26,7 +26,6 @@ typedef struct {
 typedef struct pcb {
     uint32_t pid;
     process_state_t state;
-    uint32_t first_run;
     uint32_t kernel_stack_top;
     registers_t regs;
 } pcb_t;
