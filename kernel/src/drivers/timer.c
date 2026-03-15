@@ -2,7 +2,7 @@
 #include <irq.h>
 #include <isr.h>
 #include <vga.h>
-#include <process.h>
+#include <proc/process.h>
 #include <stdio.h>
 
 int ticks = 0;
