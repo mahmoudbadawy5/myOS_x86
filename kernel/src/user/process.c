@@ -75,14 +75,11 @@ void create_process(const char *app_path)
     pcb->regs.gs = 0x23;
     pcb->regs.ss = 0x23;
 
-    printf("Starting");
+    // TODO: Replace next section with elf loader <3
 
     alloc_mem_area(pcb, USER_CODE_BASE, app_node->size, VMA_READ|VMA_EXEC);
-    printf("Allocated");
     seek_fs(app_node, 0, SEEK_START);
     read_fs(app_node, app_node->size, 1, (uint8_t *)pcb->memory_regions->start);
-    printf("Loaded");
-
     
     alloc_mem_area(pcb, USER_STACK_TOP - USER_STACK_PAGES * BLOCK_SIZE, USER_STACK_PAGES * BLOCK_SIZE, VMA_READ|VMA_WRITE|VMA_STACK);
     set_page_dir(old_dir);
