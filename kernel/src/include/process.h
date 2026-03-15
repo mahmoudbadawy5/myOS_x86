@@ -23,11 +23,19 @@ typedef struct {
     uint32_t cs, ds, es, fs, gs, ss;
 } registers_t;
 
+typedef struct vma {
+    uint32_t start;        // virtual address start (page-aligned)
+    uint32_t end;          // virtual address end   (page-aligned, exclusive)
+    uint32_t flags;        // VMA_READ | VMA_WRITE | VMA_EXEC | VMA_USER
+    struct vma *next;
+} vma_t;
+
 typedef struct pcb {
     uint32_t pid;
     process_state_t state;
     uint32_t kernel_stack_top;
     registers_t regs;
+    vma_t *memory_regions;
 } pcb_t;
 
 void init_multitasking(void);

@@ -1,6 +1,7 @@
 #include <process.h>
 #include <mem/phys_mem.h>
 #include <mem/virt_mem.h>
+#include <mem/vmm.h>
 #include <string.h>
 #include <stdio.h>
 #include <fs/vfs.h>
@@ -74,29 +75,16 @@ void create_process(const char *app_path)
     pcb->regs.gs = 0x23;
     pcb->regs.ss = 0x23;
 
-    for (uint32_t i = 0; i < (app_node->size + BLOCK_SIZE - 1) / BLOCK_SIZE; i++) {
-        void *virt = (void *)(USER_CODE_BASE + i * BLOCK_SIZE);
-        void *phys = alloc_blocks(1);
-        if (!phys) {
-            set_page_dir(old_dir);
-            num_processes--;
-            return;
-        }
-        map_address_user(virt, phys);
-    }
-    seek_fs(app_node, 0, SEEK_START);
-    read_fs(app_node, app_node->size, 1, (uint8_t *)USER_CODE_BASE);
+    printf("Starting");
 
-    for (uint32_t i = 0; i < USER_STACK_PAGES; i++) {
-        void *virt = (void *)(USER_STACK_TOP - (i + 1) * BLOCK_SIZE);
-        void *phys = alloc_blocks(1);
-        if (!phys) {
-            set_page_dir(old_dir);
-            num_processes--;
-            return;
-        }
-        map_address_user(virt, phys);
-    }
+    alloc_mem_area(pcb, USER_CODE_BASE, app_node->size, VMA_READ|VMA_EXEC);
+    printf("Allocated");
+    seek_fs(app_node, 0, SEEK_START);
+    read_fs(app_node, app_node->size, 1, (uint8_t *)pcb->memory_regions->start);
+    printf("Loaded");
+
+    
+    alloc_mem_area(pcb, USER_STACK_TOP - USER_STACK_PAGES * BLOCK_SIZE, USER_STACK_PAGES * BLOCK_SIZE, VMA_READ|VMA_WRITE|VMA_STACK);
     set_page_dir(old_dir);
 }
 
