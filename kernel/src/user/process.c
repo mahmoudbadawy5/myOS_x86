@@ -1,6 +1,7 @@
 #include <process.h>
 #include <mem/phys_mem.h>
 #include <mem/virt_mem.h>
+#include <mem/vmm.h>
 #include <string.h>
 #include <stdio.h>
 #include <fs/vfs.h>
@@ -34,8 +35,7 @@ void create_process(const char *app_path)
     pcb_t *pcb = &process_table[process_index];
     num_processes++;
     pcb->pid = next_pid++;
-    pcb->state = PROCESS_STATE_READY;
-    pcb->first_run = 1;
+    pcb->state = PROCESS_STATE_NEW;
     
     fs_node_t *app_node = get_node((char *)app_path, root_dir);
     if (!app_node || !(app_node->flags & FS_FILE)) {
@@ -75,29 +75,13 @@ void create_process(const char *app_path)
     pcb->regs.gs = 0x23;
     pcb->regs.ss = 0x23;
 
-    for (uint32_t i = 0; i < (app_node->size + BLOCK_SIZE - 1) / BLOCK_SIZE; i++) {
-        void *virt = (void *)(USER_CODE_BASE + i * BLOCK_SIZE);
-        void *phys = alloc_blocks(1);
-        if (!phys) {
-            set_page_dir(old_dir);
-            num_processes--;
-            return;
-        }
-        map_address_user(virt, phys);
-    }
-    seek_fs(app_node, 0, SEEK_START);
-    read_fs(app_node, app_node->size, 1, (uint8_t *)USER_CODE_BASE);
+    // TODO: Replace next section with elf loader <3
 
-    for (uint32_t i = 0; i < USER_STACK_PAGES; i++) {
-        void *virt = (void *)(USER_STACK_TOP - (i + 1) * BLOCK_SIZE);
-        void *phys = alloc_blocks(1);
-        if (!phys) {
-            set_page_dir(old_dir);
-            num_processes--;
-            return;
-        }
-        map_address_user(virt, phys);
-    }
+    alloc_mem_area(pcb, USER_CODE_BASE, app_node->size, VMA_READ|VMA_EXEC);
+    seek_fs(app_node, 0, SEEK_START);
+    read_fs(app_node, app_node->size, 1, (uint8_t *)pcb->memory_regions->start);
+    
+    alloc_mem_area(pcb, USER_STACK_TOP - USER_STACK_PAGES * BLOCK_SIZE, USER_STACK_PAGES * BLOCK_SIZE, VMA_READ|VMA_WRITE|VMA_STACK);
     set_page_dir(old_dir);
 }
 
@@ -116,7 +100,7 @@ void schedule(struct regs *r)
     int original_process_id = cur_proccess_id;
     do {
         cur_proccess_id = (cur_proccess_id + 1) % num_processes;
-        if(process_table[cur_proccess_id].state == PROCESS_STATE_READY) break;
+        if(process_table[cur_proccess_id].state == PROCESS_STATE_READY || process_table[cur_proccess_id].state == PROCESS_STATE_NEW) break;
     } while(cur_proccess_id != original_process_id);
 
     pcb_t *next = &process_table[cur_proccess_id];
@@ -133,8 +117,6 @@ void schedule(struct regs *r)
     uint32_t kstack_top = KERNEL_STACK_BASE + ((cur_proccess_id + 1) * KERNEL_STACK_SIZE);
     tss_set_stack(0x10, kstack_top);
     
-    next->state = PROCESS_STATE_RUNNING;
-    // __asm__ __volatile__("sti");
     switch_to_process(next, r);
        
     // Should never reach here
