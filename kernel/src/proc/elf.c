@@ -71,12 +71,10 @@ int load_elf(pcb_t* proc, char* path) {
 	if(!elf_check_file(hdr)) return -2;
 	if(!elf_check_supported(hdr)) return -3;
 
-	printf("Reading file %d %d", hdr->e_phnum, hdr->e_entry);
 	for (int i = 0; i < hdr->e_phnum; i++) {
 		Elf32_Phdr* phdr = malloc(sizeof(Elf32_Phdr));
 		seek_fs(app_node, hdr->e_phoff + (i * hdr->e_phentsize), SEEK_START);
     	read_fs(app_node, sizeof(Elf32_Phdr), 1, phdr);
-		printf("Header %d: %08ux %08ux %08ux %08ux\n", i, phdr->p_paddr, phdr->p_vaddr, phdr->p_filesz, phdr->p_memsz);
 		if(phdr->p_type == PT_LOAD) {
 			uint32_t flags = 0;
             if (phdr->p_flags & 0x1) flags |= VMA_EXEC;
