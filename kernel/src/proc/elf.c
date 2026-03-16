@@ -71,10 +71,12 @@ int load_elf(pcb_t* proc, char* path) {
 	if(!elf_check_file(hdr)) return -2;
 	if(!elf_check_supported(hdr)) return -3;
 
+	printf("Reading file %d %d", hdr->e_phnum, hdr->e_entry);
 	for (int i = 0; i < hdr->e_phnum; i++) {
 		Elf32_Phdr* phdr = malloc(sizeof(Elf32_Phdr));
 		seek_fs(app_node, hdr->e_phoff + (i * hdr->e_phentsize), SEEK_START);
     	read_fs(app_node, sizeof(Elf32_Phdr), 1, phdr);
+		printf("Header %d: %08ux %08ux %08ux %08ux\n", i, phdr->p_paddr, phdr->p_vaddr, phdr->p_filesz, phdr->p_memsz);
 		if(phdr->p_type == PT_LOAD) {
 			uint32_t flags = 0;
             if (phdr->p_flags & 0x1) flags |= VMA_EXEC;
@@ -89,22 +91,21 @@ int load_elf(pcb_t* proc, char* path) {
                 memset((void*)(phdr->p_vaddr + phdr->p_filesz), 0, phdr->p_memsz - phdr->p_filesz);
             }
 		}
-
-		uint32_t stack_size = USER_STACK_PAGES * 4096;
-		uint32_t stack_bottom = USER_STACK_TOP - stack_size;
-		alloc_mem_area(proc, stack_bottom, stack_size, VMA_READ | VMA_WRITE | VMA_STACK);
-
-		proc->regs.eip = hdr->e_entry;
-		proc->regs.esp = USER_STACK_TOP - 16;
-		proc->state = PROCESS_STATE_NEW;
-
-		uint32_t *frame = (uint32_t *)proc->kernel_stack_top;
-		frame[0] = hdr->e_entry;
-		frame[1] = 0x1B;
-		frame[2] = 0x202;
-		frame[3] = USER_STACK_TOP - 16;
-		frame[4] = 0x23;
-		
 	}
+
+	uint32_t stack_size = USER_STACK_PAGES * 4096;
+	uint32_t stack_bottom = USER_STACK_TOP - stack_size;
+	alloc_mem_area(proc, stack_bottom, stack_size, VMA_READ | VMA_WRITE | VMA_STACK);
+
+	proc->regs.eip = hdr->e_entry;
+	proc->regs.esp = USER_STACK_TOP - 16;
+	proc->state = PROCESS_STATE_NEW;
+
+	uint32_t *frame = (uint32_t *)proc->kernel_stack_top;
+	frame[0] = hdr->e_entry;
+	frame[1] = 0x1B;
+	frame[2] = 0x202;
+	frame[3] = USER_STACK_TOP - 16;
+	frame[4] = 0x23;
 	return 0;
 }

@@ -15,4 +15,4 @@ clean:
 %.bin: %.c ../libc/build/libc.o
 	@echo "[BUILD] $@"
 	gcc -I../libc/src/include $(CC_FLAGS) -c -o $(subst .bin,.o,$@) $(subst .bin,.c,$@) 
-	ld -m elf_i386 -T linker.ld -o $@ $(subst .bin,.o,$@) ../libc/build/libc.o
+	ld -m elf_i386 -o $@ $(subst .bin,.o,$@) ../libc/build/libc.o
