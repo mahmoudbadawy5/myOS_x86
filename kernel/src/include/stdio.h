@@ -34,4 +34,9 @@ void printf(const char *format, ...);
 
 void print_hex(uint32_t x);
 
+
+
+#define ERROR(...) \
+    printf("\x1b\x09Error: "), printf(__VA_ARGS__)
+
 #endif
