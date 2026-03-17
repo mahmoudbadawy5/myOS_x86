@@ -248,10 +248,12 @@ void kmain(unsigned long magic, multiboot_info_t *mbd)
     //print_mmap(mbd);
 
 
-    create_process("/inf1.bin");
-    create_process("/inf2.bin");
-    create_process("/test1.bin");
+    // create_process("/inf1.bin");
+    // create_process("/inf2.bin");
+    // create_process("/test1.bin");
 
+    create_process("/test_mem.bin");
+    
     __asm__ __volatile__("sti");
 
     test_files();
