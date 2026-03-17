@@ -1,5 +1,5 @@
 #include <assert.h>
-#include <process.h>
+#include <proc/process.h>
 #include <mem/vmm.h>
 #include <mem/malloc.h>
 #include <mem/phys_mem.h>
@@ -12,7 +12,7 @@ void alloc_mem_area(pcb_t* process, uint32_t start, uint32_t size, uint32_t flag
     vma_t *cur = process->memory_regions;
     vma_t *last = NULL;
     while(cur) {
-        ASSERT(end <= cur->start || cur->end <= start, "Memory areas overlapping [%d, %d] [%d, %d]", start, end, last->start, last->end);
+        ASSERT((end <= cur->start || cur->end <= start), "Memory areas overlapping [%08ux, %08ux] [%08ux, %08ux]", start, end, cur->start, cur->end);
         last = cur;
         cur = cur->next;
     }

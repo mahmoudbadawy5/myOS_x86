@@ -16,7 +16,7 @@
 #include <fs/initrd.h>
 #include <math.h>
 #include <arch/syscalls.h>
-#include <process.h>
+#include <proc/process.h>
 #include <tss.h>
 
 extern unsigned int code, end;

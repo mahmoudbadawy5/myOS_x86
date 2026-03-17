@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include <arch/syscalls.h>
 #include <idt.h>
-#include <process.h>
+#include <proc/process.h>
 
 int32_t (*syscalls[MAX_SYSCALLS])(syscall_regs_t *) = {
     syscall_test0,

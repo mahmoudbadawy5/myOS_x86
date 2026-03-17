@@ -1,4 +1,5 @@
-#include <process.h>
+#include <proc/process.h>
+#include <proc/elf.h>
 #include <mem/phys_mem.h>
 #include <mem/virt_mem.h>
 #include <mem/vmm.h>
@@ -36,13 +37,6 @@ void create_process(const char *app_path)
     num_processes++;
     pcb->pid = next_pid++;
     pcb->state = PROCESS_STATE_NEW;
-    
-    fs_node_t *app_node = get_node((char *)app_path, root_dir);
-    if (!app_node || !(app_node->flags & FS_FILE)) {
-        printf("create_process: app not found: %s\n", app_path);
-        num_processes--;
-        return;
-    }
 
     uint32_t kstack_virt = KERNEL_STACK_BASE + (num_processes * KERNEL_STACK_SIZE);
     for (int i=0; i < KERNEL_STACK_SIZE/4096; i++) {
@@ -51,12 +45,6 @@ void create_process(const char *app_path)
 
     uint32_t kstack_base = kstack_virt + KERNEL_STACK_SIZE;
     uint32_t iret_frame = (kstack_base - 32) & ~0xF;
-    uint32_t *frame = (uint32_t *)iret_frame;
-    frame[0] = USER_CODE_BASE;
-    frame[1] = 0x1B;
-    frame[2] = 0x202;
-    frame[3] = USER_STACK_TOP - 16;
-    frame[4] = 0x23;
     pcb->kernel_stack_top = iret_frame;
 
     uint32_t *old_dir = vmm_get_directory();
@@ -66,8 +54,6 @@ void create_process(const char *app_path)
     memset((unsigned char *)&pcb->regs, 0, sizeof(registers_t));
     pcb->regs.cr3 = (uint32_t)new_dir;
     pcb->regs.eflags = 0x202;
-    pcb->regs.eip = USER_CODE_BASE;
-    pcb->regs.esp = USER_STACK_TOP - 4;
     pcb->regs.cs = 0x1B;
     pcb->regs.ds = 0x23;
     pcb->regs.es = 0x23;
@@ -75,13 +61,11 @@ void create_process(const char *app_path)
     pcb->regs.gs = 0x23;
     pcb->regs.ss = 0x23;
 
-    // TODO: Replace next section with elf loader <3
 
-    alloc_mem_area(pcb, USER_CODE_BASE, app_node->size, VMA_READ|VMA_EXEC);
-    seek_fs(app_node, 0, SEEK_START);
-    read_fs(app_node, app_node->size, 1, (uint8_t *)pcb->memory_regions->start);
-    
-    alloc_mem_area(pcb, USER_STACK_TOP - USER_STACK_PAGES * BLOCK_SIZE, USER_STACK_PAGES * BLOCK_SIZE, VMA_READ|VMA_WRITE|VMA_STACK);
+    if(load_elf(pcb, app_path) != 0) {
+        num_processes--;
+        return;
+    }
     set_page_dir(old_dir);
 }
 

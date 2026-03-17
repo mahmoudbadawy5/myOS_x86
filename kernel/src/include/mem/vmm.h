@@ -1,7 +1,7 @@
 #pragma once
 
 #include <types.h>
-#include <process.h>
+#include <proc/process.h>
 
 #define VMA_READ   0x1
 #define VMA_WRITE  0x2
