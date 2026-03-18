@@ -8,7 +8,6 @@
 #define USER_STACK_TOP  0xA0000000
 #define USER_STACK_PAGES 4
 #define KERNEL_STACK_SIZE (2 * 4096)
-#define KERNEL_STACK_BASE 0xC0400000
 
 typedef enum {
     PROCESS_STATE_NEW,

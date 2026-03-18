@@ -253,6 +253,7 @@ void kmain(unsigned long magic, multiboot_info_t *mbd)
     // create_process("/test1.bin");
 
     create_process("/test_mem.bin");
+    create_process("/echo.bin");
     
     __asm__ __volatile__("sti");
 
