@@ -6,6 +6,7 @@
 #include <fs/vfs.h>
 #include <mem/malloc.h>
 #include <mem/vmm.h>
+#include <mem/phys_mem.h>
 
 
 bool elf_check_file(Elf32_Ehdr *hdr) {
@@ -71,16 +72,20 @@ int load_elf(pcb_t* proc, char* path) {
 	if(!elf_check_file(hdr)) return -2;
 	if(!elf_check_supported(hdr)) return -3;
 
+	uint32_t max_proc_end = 0;
+
 	for (int i = 0; i < hdr->e_phnum; i++) {
 		Elf32_Phdr* phdr = malloc(sizeof(Elf32_Phdr));
 		seek_fs(app_node, hdr->e_phoff + (i * hdr->e_phentsize), SEEK_START);
     	read_fs(app_node, sizeof(Elf32_Phdr), 1, phdr);
 		if(phdr->p_type == PT_LOAD) {
-			uint32_t flags = 0;
+			uint32_t flags = VMA_USER;
             if (phdr->p_flags & 0x1) flags |= VMA_EXEC;
             if (phdr->p_flags & 0x2) flags |= VMA_WRITE;
             if (phdr->p_flags & 0x4) flags |= VMA_READ;
 			alloc_mem_area(proc, phdr->p_vaddr, phdr->p_memsz, flags);
+			uint32_t cur_end = phdr->p_vaddr + phdr->p_memsz;
+			max_proc_end = max_proc_end < cur_end ? cur_end : max_proc_end;
 
 			seek_fs(app_node, phdr->p_offset, SEEK_START);
             read_fs(app_node, phdr->p_filesz, 1, (uint8_t*)phdr->p_vaddr);
@@ -91,9 +96,12 @@ int load_elf(pcb_t* proc, char* path) {
 		}
 	}
 
-	uint32_t stack_size = USER_STACK_PAGES * 4096;
+	uint32_t stack_size = USER_STACK_PAGES * BLOCK_SIZE;
 	uint32_t stack_bottom = USER_STACK_TOP - stack_size;
-	alloc_mem_area(proc, stack_bottom, stack_size, VMA_READ | VMA_WRITE | VMA_STACK);
+	alloc_mem_area(proc, stack_bottom, stack_size, VMA_READ | VMA_WRITE | VMA_STACK | VMA_USER);
+
+	max_proc_end = ALIGN_PAGE_UPWARDS(max_proc_end);
+	alloc_mem_area(proc, max_proc_end, BLOCK_SIZE, VMA_READ | VMA_WRITE | VMA_HEAP | VMA_USER);
 
 	proc->regs.eip = hdr->e_entry;
 	proc->regs.esp = USER_STACK_TOP - 16;

@@ -3,6 +3,9 @@
 
 #define BLOCK_SIZE 4096
 #define MAX_BLOCK_ENTRIES 4096 // max accessible memory = 4096*4096*32 (512 MB)
+#define ALIGN_PAGE(x) ((x) &  (~(BLOCK_SIZE - 1)))
+#define ALIGN_PAGE_UPWARDS(x) (((x) + BLOCK_SIZE - 1) &  (~(BLOCK_SIZE - 1)))
+
 
 void init_phys_mem(const uint32_t start_address);
 void initialize_memory_region(uint32_t start, uint32_t size);

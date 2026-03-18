@@ -18,7 +18,7 @@ typedef struct
     uint32_t eax;
 } __attribute__((packed)) syscall_regs_t;
 
-#define MAX_SYSCALLS 7
+#define MAX_SYSCALLS 8
 
 void init_syscalls(void);
 int32_t syscall_test0(syscall_regs_t *regs);
@@ -28,6 +28,7 @@ int32_t syscall_read(syscall_regs_t *regs);
 int32_t syscall_write(syscall_regs_t *regs);
 int32_t syscall_exit(syscall_regs_t *regs);
 int32_t syscall_yield(syscall_regs_t *regs);
+int32_t syscall_sbrk(syscall_regs_t *regs);
 
 // Defined in syscalls_asm.asm
 

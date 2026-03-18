@@ -3,6 +3,9 @@
 #include <arch/syscalls.h>
 #include <idt.h>
 #include <proc/process.h>
+#include <mem/phys_mem.h>
+#include <mem/virt_mem.h>
+#include <mem/vmm.h>
 
 int32_t (*syscalls[MAX_SYSCALLS])(syscall_regs_t *) = {
     syscall_test0,
@@ -11,7 +14,9 @@ int32_t (*syscalls[MAX_SYSCALLS])(syscall_regs_t *) = {
     syscall_read,
     syscall_write,
     syscall_exit,
-    syscall_yield};
+    syscall_yield,
+    syscall_sbrk,
+};
 
 void init_syscalls(void)
 {
@@ -90,4 +95,33 @@ int32_t syscall_yield(syscall_regs_t *regs)
     (void)regs;
     schedule(regs);
     return 0;
+}
+
+
+int32_t syscall_sbrk(syscall_regs_t *regs)
+{
+    int32_t increment = (int32_t)regs->ebx;
+
+    vma_t *heap = vmm_find_area_by_flag(current_process->memory_regions, VMA_HEAP);
+    if(!heap) {
+        ERROR("Process has no heap");
+        return -1;
+    }
+    uint32_t old_brk = heap->end;
+    uint32_t new_brk = old_brk + increment;
+
+    printf("old_brk: %08ux\n",old_brk);
+    // map new pages
+    uint32_t *old_dir = vmm_get_directory();
+    set_page_dir((uint32_t*) current_process->regs.cr3);
+
+    uint32_t page = ALIGN_PAGE(old_brk);
+    while (page < new_brk) {
+        map_address_user(page, alloc_blocks(1));
+        page += BLOCK_SIZE;
+    }
+
+    heap->end = new_brk;
+    // set_page_dir(old_dir);
+    return old_brk;
 }
