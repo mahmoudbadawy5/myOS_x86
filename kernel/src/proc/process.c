@@ -39,6 +39,13 @@ void create_process(const char *app_path)
     num_processes++;
     pcb->pid = next_pid++;
     pcb->state = PROCESS_STATE_NEW;
+    pcb->files_open[0] = malloc(sizeof(FILE));
+    pcb->files_open[0]->file = stdin_node;
+    pcb->files_open[0]->flags = FILE_READ;
+    
+    pcb->files_open[1] = malloc(sizeof(FILE));
+    pcb->files_open[1]->file = stdout_node;
+    pcb->files_open[1]->flags = FILE_WRITE;
 
     uint32_t kstack_virt = (uint32_t) malloc(KERNEL_STACK_SIZE);
     // for (int i=0; i < KERNEL_STACK_SIZE/4096; i++) {

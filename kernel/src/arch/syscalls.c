@@ -60,7 +60,7 @@ int32_t syscall_open(syscall_regs_t *regs)
 
 int32_t syscall_read(syscall_regs_t *regs)
 {
-    return fread((char *)regs->ebx, regs->ecx, regs->edx, files_open[regs->esi]);
+    return fread((char *)regs->ebx, regs->ecx, regs->edx, current_process->files_open[regs->esi]);
 }
 
 /*
@@ -76,7 +76,7 @@ int32_t syscall_read(syscall_regs_t *regs)
 int32_t syscall_write(syscall_regs_t *regs)
 {
     char *cur = (char *)(regs->ebx);
-    return fwrite(cur, regs->ecx, regs->edx, files_open[regs->esi]);
+    return fwrite(cur, regs->ecx, regs->edx, current_process->files_open[regs->esi]);
 }
 
 int32_t syscall_exit(syscall_regs_t *regs)

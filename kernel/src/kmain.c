@@ -198,7 +198,6 @@ void kmain(unsigned long magic, multiboot_info_t *mbd)
     init_memory_regions(magic, mbd);
     init_paging();
     init_malloc();
-    files_open = malloc(sizeof(FILE *) * MAX_FILES);
     init_stdfiles();
     puts("Hello World!");
     printf("Initializing video:\t\t[\x1b\x02OK\x1b\x0F]\n");

@@ -189,8 +189,5 @@ void keyboard_install()
     stdin_node->inode = 0;
     stdin_node->read = keyboard_read_fs;
     stdin_node->flags |= FS_CHARDEVICE;
-    files_open[0] = malloc(sizeof(FILE));
-    files_open[0]->file = stdin_node;
-    files_open[0]->flags = FILE_READ;
     irq_install_handler(1, keyboard_handler);
 }

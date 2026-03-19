@@ -141,7 +141,4 @@ void init_stdfiles()
     stdout_node->inode = 0;
     stdout_node->write = vga_write_fs;
     stdout_node->flags |= FS_CHARDEVICE;
-    files_open[1] = malloc(sizeof(FILE));
-    files_open[1]->file = stdout_node;
-    files_open[1]->flags = FILE_WRITE;
 }

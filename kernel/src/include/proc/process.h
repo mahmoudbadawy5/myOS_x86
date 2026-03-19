@@ -2,6 +2,7 @@
 
 #include <types.h>
 #include <isr.h>
+#include <stdio.h>
 
 #define MAX_PROCESSES 10
 #define USER_CODE_BASE  0x40000000
@@ -35,6 +36,7 @@ typedef struct pcb {
     uint32_t kernel_stack_top;
     registers_t regs;
     vma_t *memory_regions;
+    FILE* files_open[MAX_FILES]
 } pcb_t;
 
 void init_multitasking(void);
