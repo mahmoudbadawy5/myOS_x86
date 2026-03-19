@@ -60,7 +60,7 @@ bool elf_check_supported(Elf32_Ehdr *hdr) {
 }
 
 
-int load_elf(pcb_t* proc, char* path) {
+int load_elf(pcb_t* proc, const char* path) {
 	fs_node_t *app_node = get_node((char *)path, root_dir);
     if (!app_node || !(app_node->flags & FS_FILE)) {
         ERROR("load_elf: app not found: %s\n", path);
@@ -68,7 +68,7 @@ int load_elf(pcb_t* proc, char* path) {
 	}
 	Elf32_Ehdr *hdr = malloc(sizeof(Elf32_Ehdr));
 	seek_fs(app_node, 0, SEEK_START);
-    read_fs(app_node, sizeof(Elf32_Ehdr), 1, hdr);
+    read_fs(app_node, sizeof(Elf32_Ehdr), 1, (uint8_t*)hdr);
 	if(!elf_check_file(hdr)) return -2;
 	if(!elf_check_supported(hdr)) return -3;
 
@@ -77,7 +77,7 @@ int load_elf(pcb_t* proc, char* path) {
 	for (int i = 0; i < hdr->e_phnum; i++) {
 		Elf32_Phdr* phdr = malloc(sizeof(Elf32_Phdr));
 		seek_fs(app_node, hdr->e_phoff + (i * hdr->e_phentsize), SEEK_START);
-    	read_fs(app_node, sizeof(Elf32_Phdr), 1, phdr);
+    	read_fs(app_node, sizeof(Elf32_Phdr), 1, (uint8_t*)phdr);
 		if(phdr->p_type == PT_LOAD) {
 			uint32_t flags = VMA_USER;
             if (phdr->p_flags & 0x1) flags |= VMA_EXEC;

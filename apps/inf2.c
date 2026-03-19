@@ -1,7 +1,7 @@
 #include <test.h>
 
 
-void main()
+int main()
 {
     while(1)
     {

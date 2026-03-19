@@ -1,6 +1,6 @@
 #include <test.h>
 
-void main()
+int main()
 {
     while(1) {
         char x[2] = {0, 0};

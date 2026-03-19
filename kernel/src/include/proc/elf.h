@@ -91,4 +91,4 @@ typedef struct {
 
 bool elf_check_file(Elf32_Ehdr *hdr);
 bool elf_check_supported(Elf32_Ehdr *hdr);
-int load_elf(pcb_t* proc, char* path);
+int load_elf(pcb_t* proc, const char* path);

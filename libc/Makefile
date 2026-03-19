@@ -1,4 +1,7 @@
+CC=i686-elf-gcc
+LD=i686-elf-ld
 CC_FLAGS = -fno-stack-protector -m32 -Wall -O -fstrength-reduce -fomit-frame-pointer -finline-functions -nostdinc -fno-builtin -fno-pie
+
 c_src	:= $(shell find src -name "*.c")
 asm_src	:= $(shell find src -name "*.asm")
 c_obj   =  $(patsubst src/%, build/%, $(c_src:.c=.o))
@@ -13,12 +16,12 @@ clean:
 build/libc.o: $(all_obj)
 	@echo "[LD] $@"
 	@mkdir -p build
-	@ld -z noexecstack -m elf_i386 -r -o build/libc.o $(all_obj)
+	@$(LD) -z noexecstack -m elf_i386 -r -o build/libc.o $(all_obj)
 
 build/%.o : src/%.c
 	@echo "[CPP] $@"
 	@mkdir -p $(shell dirname $@)
-	@gcc $(CC_FLAGS)  -Isrc/include -c -o $@ $<
+	@$(CC) $(CC_FLAGS)  -Isrc/include -c -o $@ $<
 
 build/%.o : src/%.asm
 	@echo "[ASM] $@"

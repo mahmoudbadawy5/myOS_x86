@@ -1,6 +1,6 @@
 #include <test.h>
 
-void main()
+int main()
 {
     print("Hello World from test2 :)\n");
 }

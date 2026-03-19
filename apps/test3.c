@@ -14,7 +14,7 @@ unsigned int test_invalid_syscall(unsigned int val)
 }
 
 
-void main()
+int main()
 {
     print("Hello World");
     test_invalid_syscall(15);

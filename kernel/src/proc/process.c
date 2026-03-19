@@ -10,6 +10,7 @@
 #include <fs/initrd.h>
 #include <arch.h>
 #include <isr.h>
+#include <tss.h>
 
 static pcb_t process_table[MAX_PROCESSES];
 static uint32_t next_pid = 1;
@@ -39,7 +40,7 @@ void create_process(const char *app_path)
     pcb->pid = next_pid++;
     pcb->state = PROCESS_STATE_NEW;
 
-    uint32_t kstack_virt = malloc(KERNEL_STACK_SIZE);
+    uint32_t kstack_virt = (uint32_t) malloc(KERNEL_STACK_SIZE);
     // for (int i=0; i < KERNEL_STACK_SIZE/4096; i++) {
     //     map_address((void*)(kstack_virt + i*4096), alloc_blocks(1));
     // }
