@@ -117,11 +117,11 @@ int32_t syscall_sbrk(struct regs *regs)
 
     uint32_t page = ALIGN_PAGE(old_brk);
     while (page < new_brk) {
-        map_address_user(page, alloc_blocks(1));
+        map_address_user((void*) page, alloc_blocks(1));
         page += BLOCK_SIZE;
     }
 
     heap->end = new_brk;
-    // set_page_dir(old_dir);
+    set_page_dir(old_dir);
     return old_brk;
 }
