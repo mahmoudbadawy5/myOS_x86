@@ -35,8 +35,12 @@ typedef struct pcb {
     process_state_t state;
     uint32_t kernel_stack_top;
     registers_t regs;
+
     vma_t *memory_regions;
-    FILE* files_open[MAX_FILES]
+    FILE* files_open[MAX_FILES];
+
+    uint32_t children_id[MAX_PROCESSES];
+    uint32_t parent_id;
 } pcb_t;
 
 void init_multitasking(void);

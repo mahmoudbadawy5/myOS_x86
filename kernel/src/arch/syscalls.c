@@ -7,7 +7,7 @@
 #include <mem/virt_mem.h>
 #include <mem/vmm.h>
 
-int32_t (*syscalls[MAX_SYSCALLS])(syscall_regs_t *) = {
+int32_t (*syscalls[MAX_SYSCALLS])(struct regs *) = {
     syscall_test0,
     syscall_test1,
     syscall_open,
@@ -23,13 +23,13 @@ void init_syscalls(void)
     idt_set_gate(0x80, (unsigned)handle_syscalls, 0x08, 0xEE);
 }
 
-int32_t syscall_test0(syscall_regs_t *regs)
+int32_t syscall_test0(struct regs *regs)
 {
     printf("System call 0 (test): %d %d\n", regs->eax, regs->ebx);
     return 0;
 }
 
-int32_t syscall_test1(syscall_regs_t *regs)
+int32_t syscall_test1(struct regs *regs)
 {
     printf("System call 1 (test): %d %d\n", regs->eax, regs->ebx);
     return 15;
@@ -43,7 +43,7 @@ int32_t syscall_test1(syscall_regs_t *regs)
         File id or -2 if file is not found
 */
 
-int32_t syscall_open(syscall_regs_t *regs)
+int32_t syscall_open(struct regs *regs)
 {
     return fopen((char *)regs->ebx, (char *)regs->ecx);
 }
@@ -58,7 +58,7 @@ int32_t syscall_open(syscall_regs_t *regs)
         count
 */
 
-int32_t syscall_read(syscall_regs_t *regs)
+int32_t syscall_read(struct regs *regs)
 {
     return fread((char *)regs->ebx, regs->ecx, regs->edx, current_process->files_open[regs->esi]);
 }
@@ -73,13 +73,13 @@ int32_t syscall_read(syscall_regs_t *regs)
         count
 */
 
-int32_t syscall_write(syscall_regs_t *regs)
+int32_t syscall_write(struct regs *regs)
 {
     char *cur = (char *)(regs->ebx);
     return fwrite(cur, regs->ecx, regs->edx, current_process->files_open[regs->esi]);
 }
 
-int32_t syscall_exit(syscall_regs_t *regs)
+int32_t syscall_exit(struct regs *regs)
 {
     (void)regs;
     if (current_process) {
@@ -90,7 +90,7 @@ int32_t syscall_exit(syscall_regs_t *regs)
     return 0;
 }
 
-int32_t syscall_yield(syscall_regs_t *regs)
+int32_t syscall_yield(struct regs *regs)
 {
     (void)regs;
     schedule(regs);
@@ -98,7 +98,7 @@ int32_t syscall_yield(syscall_regs_t *regs)
 }
 
 
-int32_t syscall_sbrk(syscall_regs_t *regs)
+int32_t syscall_sbrk(struct regs *regs)
 {
     int32_t increment = (int32_t)regs->ebx;
 

@@ -5,50 +5,48 @@ extern syscalls
 
 handle_syscalls:
     ; Already on stack (by CPU): user_SS, user_ESP, eflags, user_CS, user_EIP
-    ; Push regs in order of syscall_regs_t: esp placeholder, ebx, ecx, edx, esi, edi, ebp, ds, es, fs, gs, eax
+    ; Build a stack frame identical to the one expected by `struct regs` in [isr.h]
+    ; so that `schedule(regs)` + `switch_to_process` can restore correctly.
 
-    cmp EAX, MAX_SYSCALL
+    push dword 0       ; dummy err_code
+    push dword 0x80    ; dummy interrupt number
+
+    pusha
+    push ds
+    push es
+    push fs
+    push gs
+
+    mov ax, 0x10       ; Kernel data segment
+    mov ds, ax
+    mov es, ax
+    mov fs, ax
+    mov gs, ax
+
+    mov ebx, esp       ; ebx = pointer to struct regs (top starts at gs)
+    mov eax, [ebx + 44] ; regs->eax holds syscall number
+
+    cmp eax, MAX_SYSCALL
     ja invalid_syscall
 
-    push EAX
-    push GS
-    push FS
-    push ES
-    push DS
+    push ebx
+    call [syscalls + 4*eax]
+    add esp, 4
 
-    mov AX, 0x10      ; Kernel data segment
-    mov DS, AX
-    mov ES, AX
-    mov FS, AX
-    mov GS, AX
+    ; Write return value into regs->eax so user sees it in the saved EAX.
+    mov [ebx + 44], eax
 
-    push EBP
-    push EDI
-    push ESI
-    push EDX
-    push ECX
-    push EBX
-    push ESP
-    ; Now ESP points to saved-ESP slot; syscall_regs_t layout starts here
-
-    push ESP
-    mov EAX, [ESP+4+44]
-    call [syscalls + 4*EAX]
-    mov [ESP+4+44], EAX
-    add ESP, 8
-    pop EBX
-    pop ECX
-    pop EDX
-    pop ESI
-    pop EDI
-    pop EBP
-    pop DS
-    pop ES
-    pop FS
-    pop GS
-    pop EAX
-    iretd
+    jmp restore_syscalls
 
 invalid_syscall:
-    mov EAX, -1
+    mov eax, -1
+    mov [ebx + 44], eax
+
+restore_syscalls:
+    pop gs
+    pop fs
+    pop es
+    pop ds
+    popa
+    add esp, 8
     iretd
