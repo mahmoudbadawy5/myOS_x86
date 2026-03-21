@@ -198,7 +198,6 @@ void kmain(unsigned long magic, multiboot_info_t *mbd)
     init_memory_regions(magic, mbd);
     init_paging();
     init_malloc();
-    files_open = malloc(sizeof(FILE *) * MAX_FILES);
     init_stdfiles();
     puts("Hello World!");
     printf("Initializing video:\t\t[\x1b\x02OK\x1b\x0F]\n");
@@ -248,10 +247,13 @@ void kmain(unsigned long magic, multiboot_info_t *mbd)
     //print_mmap(mbd);
 
 
-    create_process("/inf1.bin");
-    create_process("/inf2.bin");
-    create_process("/test1.bin");
+    // create_process("/inf1.bin");
+    // create_process("/inf2.bin");
+    // create_process("/test1.bin");
 
+    create_process("/test_mem.bin");
+    create_process("/echo.bin");
+    
     __asm__ __volatile__("sti");
 
     test_files();

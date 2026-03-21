@@ -2,6 +2,7 @@
 #include <proc/elf.h>
 #include <mem/phys_mem.h>
 #include <mem/virt_mem.h>
+#include <mem/malloc.h>
 #include <mem/vmm.h>
 #include <string.h>
 #include <stdio.h>
@@ -9,6 +10,7 @@
 #include <fs/initrd.h>
 #include <arch.h>
 #include <isr.h>
+#include <tss.h>
 
 static pcb_t process_table[MAX_PROCESSES];
 static uint32_t next_pid = 1;
@@ -37,11 +39,18 @@ void create_process(const char *app_path)
     num_processes++;
     pcb->pid = next_pid++;
     pcb->state = PROCESS_STATE_NEW;
+    pcb->files_open[0] = malloc(sizeof(FILE));
+    pcb->files_open[0]->file = stdin_node;
+    pcb->files_open[0]->flags = FILE_READ;
+    
+    pcb->files_open[1] = malloc(sizeof(FILE));
+    pcb->files_open[1]->file = stdout_node;
+    pcb->files_open[1]->flags = FILE_WRITE;
 
-    uint32_t kstack_virt = KERNEL_STACK_BASE + (num_processes * KERNEL_STACK_SIZE);
-    for (int i=0; i < KERNEL_STACK_SIZE/4096; i++) {
-        map_address((void*)(kstack_virt + i*4096), alloc_blocks(1));
-    }
+    uint32_t kstack_virt = (uint32_t) malloc(KERNEL_STACK_SIZE);
+    // for (int i=0; i < KERNEL_STACK_SIZE/4096; i++) {
+    //     map_address((void*)(kstack_virt + i*4096), alloc_blocks(1));
+    // }
 
     uint32_t kstack_base = kstack_virt + KERNEL_STACK_SIZE;
     uint32_t iret_frame = (kstack_base - 32) & ~0xF;
@@ -98,8 +107,7 @@ void schedule(struct regs *r)
     // cnt++;
     // if(cnt>=15) return;
     
-    uint32_t kstack_top = KERNEL_STACK_BASE + ((cur_proccess_id + 1) * KERNEL_STACK_SIZE);
-    tss_set_stack(0x10, kstack_top);
+    tss_set_stack(0x10, next->kernel_stack_top);
     
     switch_to_process(next, r);
        

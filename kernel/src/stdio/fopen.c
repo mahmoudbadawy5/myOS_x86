@@ -1,6 +1,7 @@
 #include <fs/vfs.h>
 #include <stdio.h>
 #include <mem/malloc.h>
+#include <proc/process.h>
 
 int get_mode(char *modes)
 {
@@ -23,16 +24,16 @@ int fopen(char *path, char *modes)
     int free_id = 3;
     for (int i = 3; i < MAX_FILES; i++)
     {
-        if (files_open[i] == NULL)
+        if (current_process->files_open[i] == NULL)
         {
             free_id = i;
             break;
         }
     }
-    if (files_open[free_id])
-        free(files_open[free_id]);
-    files_open[free_id] = malloc(sizeof(FILE));
-    files_open[free_id]->file = get_node(path, root_dir);
-    files_open[free_id]->flags = modes_mask;
+    if (current_process->files_open[free_id])
+        free(current_process->files_open[free_id]);
+    current_process->files_open[free_id] = malloc(sizeof(FILE));
+    current_process->files_open[free_id]->file = get_node(path, root_dir);
+    current_process->files_open[free_id]->flags = modes_mask;
     return free_id;
 }

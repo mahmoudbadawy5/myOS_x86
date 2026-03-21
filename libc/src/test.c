@@ -51,3 +51,11 @@ unsigned int exit() {
                          : "a"(5));
     return ret;
 }
+
+unsigned int sbrk(unsigned int increament) {
+    unsigned int ret;
+    __asm__ __volatile__("int $0x80;"
+                         : "=a"(ret)
+                         : "a"(7), "b"(increament));
+    return ret;
+}

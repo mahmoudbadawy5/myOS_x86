@@ -6,7 +6,7 @@
 #include <fs/vfs.h>
 
 #define BUFFER_SIZE 1024
-#define MAX_FILES 256
+#define MAX_FILES 32
 
 #define FILE_READ 0x01
 #define FILE_WRITE 0x02
@@ -17,8 +17,6 @@ typedef struct __sFILE
     uint8_t flags;
     fs_node_t *file;
 } FILE;
-
-FILE **files_open;
 
 int fopen(char *path, char *modes);
 size_t fread(char *buf, size_t size, size_t count, FILE *fp);

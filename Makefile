@@ -22,8 +22,8 @@ clean:
 	make -C kernel clean
 	make -C libc clean
 	make -C apps clean
-	rm initrd/*.bin
-	rm myos.iso
+	rm -f initrd/*.bin
+	rm -f myos.iso
 
 run: myos.iso
 	kvm -cdrom myos.iso

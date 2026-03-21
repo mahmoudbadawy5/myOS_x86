@@ -1,3 +1,5 @@
+CC=i686-elf-gcc
+LD=i686-elf-ld
 CC_FLAGS = -fno-stack-protector -m32 -Wall -O -fstrength-reduce -fomit-frame-pointer -finline-functions -nostdinc -fno-builtin -fno-pie
 
 all_apps_src	:= $(shell find src -name "*.c")
@@ -14,5 +16,5 @@ clean:
 
 %.bin: %.c ../libc/build/libc.o
 	@echo "[BUILD] $@"
-	gcc -I../libc/src/include $(CC_FLAGS) -c -o $(subst .bin,.o,$@) $(subst .bin,.c,$@) 
-	ld -m elf_i386 -o $@ $(subst .bin,.o,$@) ../libc/build/libc.o
+	$(CC) -I../libc/src/include $(CC_FLAGS) -c -o $(subst .bin,.o,$@) $(subst .bin,.c,$@) 
+	$(LD) -m elf_i386 -o $@ $(subst .bin,.o,$@) ../libc/build/libc.o

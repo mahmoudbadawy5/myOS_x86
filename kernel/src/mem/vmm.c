@@ -30,3 +30,12 @@ void alloc_mem_area(pcb_t* process, uint32_t start, uint32_t size, uint32_t flag
     if(last) last->next = new_area;
     else process->memory_regions=new_area;
 }
+
+
+vma_t* vmm_find_area_by_flag(vma_t* memory_regions, uint32_t flags) {
+    while(memory_regions) {
+        if((memory_regions->flags & flags) == flags) return memory_regions;
+        memory_regions = memory_regions->next;
+    }
+    return NULL;
+}
