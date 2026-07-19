@@ -59,3 +59,11 @@ unsigned int sbrk(unsigned int increament) {
                          : "a"(7), "b"(increament));
     return ret;
 }
+
+unsigned int spawn(const char *path) {
+    unsigned int ret;
+    __asm__ __volatile__("int $0x80;"
+                         : "=a"(ret)
+                         : "a"(8), "b"(path));
+    return ret;
+}

@@ -22,7 +22,7 @@
 extern unsigned int code, end;
 unsigned int kstart = (unsigned int)&code - KERNEL_VIRTUAL_BASE;
 unsigned int kend = (unsigned int)&end - KERNEL_VIRTUAL_BASE;
-uint32_t initrd_location, initrd_end;
+uint32_t initrd_end;
 
 void print_mmap(multiboot_info_t *mbd)
 {
@@ -250,9 +250,9 @@ void kmain(unsigned long magic, multiboot_info_t *mbd)
     // create_process("/inf1.bin");
     // create_process("/inf2.bin");
     // create_process("/test1.bin");
+    // create_process("/test_mem.bin");
 
-    create_process("/test_mem.bin");
-    create_process("/echo.bin");
+    create_process("/shell.bin");
     
     __asm__ __volatile__("sti");
 

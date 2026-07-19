@@ -16,6 +16,7 @@ int32_t (*syscalls[MAX_SYSCALLS])(struct regs *) = {
     syscall_exit,
     syscall_yield,
     syscall_sbrk,
+    syscall_spawn,
 };
 
 void init_syscalls(void)
@@ -124,4 +125,11 @@ int32_t syscall_sbrk(struct regs *regs)
     heap->end = new_brk;
     set_page_dir(old_dir);
     return old_brk;
+}
+
+int32_t syscall_spawn(struct regs *regs)
+{
+    char *path = (char *)regs->ebx;
+    create_process(path);
+    return 0;
 }
