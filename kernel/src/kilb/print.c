@@ -2,7 +2,6 @@
 #include <stdio.h>
 #include <mem/phys_mem.h>
 #include <stdarg.h>
-#include <mem/malloc.h>
 #include <types.h>
 #include <string.h>
 
@@ -60,11 +59,10 @@ void panic(const char *format, ...)
 {
     va_list args;
     va_start(args, format);
-    char *buf = malloc(BUFFER_SIZE);
+    char buf[BUFFER_SIZE];
     puts("\x1b\x40Kernel Panic: ");
     vsprintf(buf, format, args);
     puts(buf);
-    free(buf);
     va_end(args);
     __asm__("cli; hlt;");
 }
@@ -143,10 +141,9 @@ void vsprintf(char *buf, const char *format, va_list args)
 
 void vfprintf(fs_node_t *file, const char *format, va_list args)
 {
-    char *buf = malloc(BUFFER_SIZE);
+    char buf[BUFFER_SIZE];
     vsprintf(buf, format, args);
     write_fs(file, strlen(buf), 1, (uint8_t *)buf);
-    free(buf);
 }
 
 void printf(const char *format, ...)

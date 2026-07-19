@@ -46,16 +46,19 @@ void deinitialize_memory_region(uint32_t start, uint32_t size)
 
 int find_first_free_blocks(uint32_t size)
 {
+    if (size == 0) return 0;
+    uint32_t limit = MAX_BLOCK_ENTRIES * 32;
+    if (size > limit) return -1;
 
-    for (int i = 0; i < MAX_BLOCK_ENTRIES * 32; i++)
+    for (uint32_t i = 0; i <= limit - size; i++)
     {
-        if (mem_bitmap[i / 8] == 0) // Skip the whole entry if it's empty
+        if (mem_bitmap[i / 32] == 0)
         {
-            i += 7;
+            i += 31;
             continue;
         }
         bool found = true;
-        for (int j = 0; j < size; j++)
+        for (uint32_t j = 0; j < size; j++)
         {
             if (!test_block(i + j))
             {

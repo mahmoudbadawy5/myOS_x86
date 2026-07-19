@@ -61,7 +61,7 @@ void *allocate_page(uint32_t *page)
 
 void free_page(uint32_t *page)
 {
-    void *address = (void *)((*page - KERNEL_VIRTUAL_BASE) & PAGE_ADDR);
+    void *address = (void *)(*page & PAGE_ADDR);
     if (address)
         free_blocks(address, 1);
     *page &= ~PAGE_PRESENT;
@@ -135,6 +135,22 @@ uint32_t *vmm_clone_directory(void)
     }
 
     return (uint32_t *)((uint32_t)new_dir - KERNEL_VIRTUAL_BASE);
+}
+
+void vmm_free_directory(uint32_t *page_dir)
+{
+    uint32_t *dir = (uint32_t *)((uint32_t)page_dir + KERNEL_VIRTUAL_BASE);
+    for (uint32_t i = 0; i < KERNEL_PAGE_NUMBER; i++) {
+        if (!(dir[i] & PAGE_PRESENT))
+            continue;
+        uint32_t *table = (uint32_t *)((dir[i] & PAGE_ADDR) + KERNEL_VIRTUAL_BASE);
+        for (uint32_t j = 0; j < 1024; j++) {
+            if (table[j] & PAGE_PRESENT)
+                free_page(&table[j]);
+        }
+        free_blocks((uint32_t *)(dir[i] & PAGE_ADDR), 1);
+    }
+    free_blocks(page_dir, 1);
 }
 
 void switch_to_kernel_page_dir(void)

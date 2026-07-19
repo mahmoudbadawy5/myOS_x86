@@ -36,9 +36,8 @@ void create_process(const char *app_path)
 
     uint32_t process_index = num_processes;
     pcb_t *pcb = &process_table[process_index];
-    num_processes++;
     pcb->pid = next_pid++;
-    pcb->state = PROCESS_STATE_NEW;
+    pcb->state = PROCESS_STATE_BLOCKED;
     pcb->files_open[0] = malloc(sizeof(FILE));
     pcb->files_open[0]->file = stdin_node;
     pcb->files_open[0]->flags = FILE_READ;
@@ -48,9 +47,6 @@ void create_process(const char *app_path)
     pcb->files_open[1]->flags = FILE_WRITE;
 
     uint32_t kstack_virt = (uint32_t) malloc(KERNEL_STACK_SIZE);
-    // for (int i=0; i < KERNEL_STACK_SIZE/4096; i++) {
-    //     map_address((void*)(kstack_virt + i*4096), alloc_blocks(1));
-    // }
 
     uint32_t kstack_base = kstack_virt + KERNEL_STACK_SIZE;
     uint32_t iret_frame = (kstack_base - 32) & ~0xF;
@@ -72,13 +68,18 @@ void create_process(const char *app_path)
 
 
     if(load_elf(pcb, app_path) != 0) {
-        num_processes--;
+        set_page_dir(old_dir);
+        vmm_free_directory(new_dir);
+        free(pcb->files_open[0]);
+        free(pcb->files_open[1]);
+        free((void *)kstack_virt);
         return;
     }
     set_page_dir(old_dir);
-}
 
-int cnt=0;
+    pcb->state = PROCESS_STATE_NEW;
+    num_processes++;
+}
 
 void schedule(struct regs *r)
 {

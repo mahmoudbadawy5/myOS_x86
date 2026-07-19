@@ -73,7 +73,7 @@ void *malloc(uint32_t size)
         else
         {
             // Extend current block
-            int needed_blocks = (size - cur->free + BLOCK_SIZE - 1) / BLOCK_SIZE;
+            int needed_blocks = (size - cur->size + BLOCK_SIZE - 1) / BLOCK_SIZE;
             for (int i = malloc_reserved_blocks; i < malloc_reserved_blocks + needed_blocks; i++)
             {
                 uint32_t *phys_address = alloc_blocks(1);

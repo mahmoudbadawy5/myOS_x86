@@ -61,7 +61,10 @@ int32_t syscall_open(struct regs *regs)
 
 int32_t syscall_read(struct regs *regs)
 {
-    return fread((char *)regs->ebx, regs->ecx, regs->edx, current_process->files_open[regs->esi]);
+    uint32_t fd = regs->esi;
+    FILE *fp = current_process->files_open[fd];
+    int ret = fread((char *)regs->ebx, regs->ecx, regs->edx, fp);
+    return ret;
 }
 
 /*
@@ -111,14 +114,18 @@ int32_t syscall_sbrk(struct regs *regs)
     uint32_t old_brk = heap->end;
     uint32_t new_brk = old_brk + increment;
 
-    printf("old_brk: %08ux\n",old_brk);
     // map new pages
     uint32_t *old_dir = vmm_get_directory();
     set_page_dir((uint32_t*) current_process->regs.cr3);
 
     uint32_t page = ALIGN_PAGE(old_brk);
     while (page < new_brk) {
-        map_address_user((void*) page, alloc_blocks(1));
+        void *phys = alloc_blocks(1);
+        if (!phys) {
+            ERROR("sbrk: out of memory\n");
+            break;
+        }
+        map_address_user((void*) page, phys);
         page += BLOCK_SIZE;
     }
 
