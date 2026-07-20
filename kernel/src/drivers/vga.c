@@ -113,6 +113,7 @@ void puts(char *str)
 uint32_t vga_write_fs(fs_node_t *node, uint32_t size, uint32_t units, uint8_t *buffer)
 {
     uint32_t ret = 0;
+    col_next = 0;
     for (int i = 0; i < units; i++)
     {
         for (int j = 0; j < size; j++)

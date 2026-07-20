@@ -34,6 +34,14 @@ void create_process(const char *app_path)
     if (num_processes >= MAX_PROCESSES)
         return;
 
+    char kernel_path[128];
+    int i = 0;
+    while (app_path[i] && i < 127) {
+        kernel_path[i] = app_path[i];
+        i++;
+    }
+    kernel_path[i] = '\0';
+
     uint32_t process_index = num_processes;
     pcb_t *pcb = &process_table[process_index];
     pcb->pid = next_pid++;
@@ -67,9 +75,8 @@ void create_process(const char *app_path)
     pcb->regs.ss = 0x23;
 
 
-    if(load_elf(pcb, app_path) != 0) {
+    if(load_elf(pcb, kernel_path) != 0) {
         set_page_dir(old_dir);
-        vmm_free_directory(new_dir);
         free(pcb->files_open[0]);
         free(pcb->files_open[1]);
         free((void *)kstack_virt);

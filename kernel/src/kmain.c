@@ -152,6 +152,7 @@ void init_memory_regions(unsigned long magic, multiboot_info_t *mbd)
     }
 
     deinitialize_memory_region(0, kend + MAX_BLOCK_ENTRIES * 4); // reserve first 1M for grub/bios + Reserve kernel space + (old page tables)
+    deinitialize_memory_region(0xB8000, 0x1000); // reserve VGA text buffer so heap allocator never maps it
 }
 
 void test_files() {
@@ -253,10 +254,10 @@ void kmain(unsigned long magic, multiboot_info_t *mbd)
     // create_process("/test_mem.bin");
 
     create_process("/shell.bin");
-    
-    __asm__ __volatile__("sti");
 
     test_files();
+
+    __asm__ __volatile__("sti");
 
     for (;;)
         ;
