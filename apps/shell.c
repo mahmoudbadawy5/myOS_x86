@@ -144,6 +144,7 @@ void run_command(int argc, char **args)
         print(path);
         print("\n");
         spawn(path);
+        wait();
     }
 }
 

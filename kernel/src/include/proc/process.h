@@ -41,10 +41,17 @@ typedef struct pcb {
 
     uint32_t children_id[MAX_PROCESSES];
     uint32_t parent_id;
+
+    int signal_pending;     /* Non-zero = pending signal (e.g. SIGINT=2) */
+    uint32_t num_children;  /* Number of live children */
 } pcb_t;
 
 void init_multitasking(void);
-void create_process(const char *app_name);
+void create_process(const char *app_name, uint32_t parent_pid);
 void schedule(struct regs *r);
+
+uint32_t find_terminated_child(uint32_t parent_pid);
+int has_live_children(uint32_t parent_pid);
+void unblock_parent(uint32_t child_pid);
 
 extern pcb_t *current_process;

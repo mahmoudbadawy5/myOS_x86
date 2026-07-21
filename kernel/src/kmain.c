@@ -253,7 +253,7 @@ void kmain(unsigned long magic, multiboot_info_t *mbd)
     // create_process("/test1.bin");
     // create_process("/test_mem.bin");
 
-    create_process("/shell.bin");
+    create_process("/shell.bin", 0);
 
     test_files();
 

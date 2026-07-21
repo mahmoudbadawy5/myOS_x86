@@ -5,6 +5,7 @@
 #include <mem/malloc.h>
 #include <stdio.h>
 #include <fs/vfs.h>
+#include <proc/process.h>
 
 /* KBDUS means US Keyboard Layout. This is a scancode table
  *  used to layout a standard US keyboard. I have left some
@@ -89,7 +90,7 @@ unsigned char kbdus[2][128] = {
         0, /* All other keys are undefined */
     }};
 
-volatile int shift = 0, caps_lock = 0;
+volatile int shift = 0, caps_lock = 0, ctrl = 0;
 char *kbd_buf;
 volatile uint32_t buf_start=0, buf_size=0;
 
@@ -102,21 +103,31 @@ void keyboard_handler(struct regs *r)
 
     if (scancode & 0x80)
     {
+        /* Key release */
         if (scancode == 0xAA || scancode == 0xB6)
-        {
             shift = 0;
-        }
+        else if (scancode == 0x9D)
+            ctrl = 0;
     }
     else
     {
         if (scancode == 0x2A || scancode == 0x36)
-        {
             shift = 1;
-        }
+        if (scancode == 0x1D)
+            ctrl = 1;
         if (scancode == 0x3A)
-        {
             caps_lock = !caps_lock;
+
+        /* Ctrl+C: send SIGINT (signal 2) to current process */
+        if (ctrl && scancode == 0x2E)
+        {
+            if (current_process) {
+                current_process->signal_pending = 2;
+                schedule(r);
+            }
+            return;
         }
+
         char ret = kbdus[shift][scancode];
         if (!ret)
             return;

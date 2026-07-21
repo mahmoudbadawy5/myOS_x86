@@ -29,7 +29,7 @@ void init_multitasking(void)
     num_processes = 0;
 }
 
-void create_process(const char *app_path)
+void create_process(const char *app_path, uint32_t parent_pid)
 {
     if (num_processes >= MAX_PROCESSES)
         return;
@@ -46,6 +46,9 @@ void create_process(const char *app_path)
     pcb_t *pcb = &process_table[process_index];
     pcb->pid = next_pid++;
     pcb->state = PROCESS_STATE_BLOCKED;
+    pcb->parent_id = parent_pid;
+    pcb->signal_pending = 0;
+    pcb->num_children = 0;
     pcb->files_open[0] = malloc(sizeof(FILE));
     pcb->files_open[0]->file = stdin_node;
     pcb->files_open[0]->flags = FILE_READ;
@@ -60,7 +63,18 @@ void create_process(const char *app_path)
     uint32_t iret_frame = (kstack_base - 32) & ~0xF;
     pcb->kernel_stack_top = iret_frame;
 
-    uint32_t *old_dir = vmm_get_directory();
+    /* Increment parent's child count BEFORE load so it's always accurate */
+    if (parent_pid != 0) {
+        for (uint32_t j = 0; j < num_processes; j++) {
+            if (process_table[j].pid == parent_pid) {
+                process_table[j].num_children++;
+                break;
+            }
+        }
+    }
+
+    uint32_t old_cr3;
+    __asm__ __volatile__("mov %%cr3, %0" : "=r"(old_cr3));
     uint32_t *new_dir = vmm_clone_directory();
     set_page_dir(new_dir);
 
@@ -76,13 +90,22 @@ void create_process(const char *app_path)
 
 
     if(load_elf(pcb, kernel_path) != 0) {
-        set_page_dir(old_dir);
+        set_page_dir((uint32_t *)old_cr3);
         free(pcb->files_open[0]);
         free(pcb->files_open[1]);
         free((void *)kstack_virt);
+        /* Undo parent's child count */
+        if (parent_pid != 0) {
+            for (uint32_t j = 0; j < num_processes; j++) {
+                if (process_table[j].pid == parent_pid) {
+                    process_table[j].num_children--;
+                    break;
+                }
+            }
+        }
         return;
     }
-    set_page_dir(old_dir);
+    set_page_dir((uint32_t *)old_cr3);
 
     pcb->state = PROCESS_STATE_NEW;
     num_processes++;
@@ -95,6 +118,17 @@ void schedule(struct regs *r)
         return;
 
     __asm__ __volatile__("cli");
+
+    /* Check for pending signals on the current process */
+    if (cur_proccess_id != -1) {
+        pcb_t *cur = &process_table[cur_proccess_id];
+        if (cur->signal_pending != 0 && cur->state == PROCESS_STATE_RUNNING) {
+            cur->state = PROCESS_STATE_TERMINATED;
+            cur->signal_pending = 0;
+            unblock_parent(cur->pid);
+        }
+    }
+
     if(cur_proccess_id != -1 && process_table[cur_proccess_id].state == PROCESS_STATE_RUNNING) {
         process_table[cur_proccess_id].state = PROCESS_STATE_READY;
     }
@@ -121,4 +155,50 @@ void schedule(struct regs *r)
        
     // Should never reach here
     for(;;);
+}
+
+/* Returns PID of a terminated child of `parent_pid`, or 0 if none */
+uint32_t find_terminated_child(uint32_t parent_pid)
+{
+    for (uint32_t i = 0; i < num_processes; i++) {
+        if (process_table[i].parent_id == parent_pid &&
+            process_table[i].state == PROCESS_STATE_TERMINATED) {
+            return process_table[i].pid;
+        }
+    }
+    return 0;
+}
+
+/* Returns 1 if `pid` is a live (non-terminated) child of `parent_pid` */
+int has_live_children(uint32_t parent_pid)
+{
+    for (uint32_t i = 0; i < num_processes; i++) {
+        if (process_table[i].parent_id == parent_pid &&
+            process_table[i].state != PROCESS_STATE_TERMINATED) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+/* Unblock the parent of `child_pid` and set its return value.
+ * schedule() never returns, so the return value must be written
+ * directly into the parent's saved trap frame (EAX slot at offset 44). */
+void unblock_parent(uint32_t child_pid)
+{
+    for (uint32_t i = 0; i < num_processes; i++) {
+        if (process_table[i].pid == child_pid) {
+            uint32_t parent = process_table[i].parent_id;
+            for (uint32_t j = 0; j < num_processes; j++) {
+                if (process_table[j].pid == parent &&
+                    process_table[j].state == PROCESS_STATE_BLOCKED) {
+                    /* Set return value in parent's saved trap frame */
+                    uint32_t *tf = (uint32_t *)process_table[j].regs.esp;
+                    tf[11] = child_pid; /* EAX is at offset 44 / sizeof(uint32_t) = 11 */
+                    process_table[j].state = PROCESS_STATE_READY;
+                }
+            }
+            break;
+        }
+    }
 }

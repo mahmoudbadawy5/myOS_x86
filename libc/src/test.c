@@ -67,3 +67,11 @@ unsigned int spawn(const char *path) {
                          : "a"(8), "b"(path));
     return ret;
 }
+
+unsigned int wait() {
+    unsigned int ret;
+    __asm__ __volatile__("int $0x80;"
+                         : "=a"(ret)
+                         : "a"(9));
+    return ret;
+}

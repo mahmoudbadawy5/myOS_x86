@@ -17,6 +17,7 @@ int32_t (*syscalls[MAX_SYSCALLS])(struct regs *) = {
     syscall_yield,
     syscall_sbrk,
     syscall_spawn,
+    syscall_wait,
 };
 
 void init_syscalls(void)
@@ -88,6 +89,7 @@ int32_t syscall_exit(struct regs *regs)
     (void)regs;
     if (current_process) {
         current_process->state = PROCESS_STATE_TERMINATED;
+        unblock_parent(current_process->pid);
         current_process = NULL;
         schedule(regs);
     }
@@ -137,6 +139,33 @@ int32_t syscall_sbrk(struct regs *regs)
 int32_t syscall_spawn(struct regs *regs)
 {
     char *path = (char *)regs->ebx;
-    create_process(path);
+    create_process(path, current_process->pid);
     return 0;
+}
+
+int32_t syscall_wait(struct regs *regs)
+{
+    (void)regs;
+    if (!current_process)
+        return -1;
+
+    uint32_t my_pid = current_process->pid;
+
+    /* Reap any already-terminated child immediately */
+    uint32_t dead = find_terminated_child(my_pid);
+    if (dead != 0) {
+        regs->eax = dead;
+        return dead;
+    }
+
+    /* No terminated child — if we have live children, block */
+    if (has_live_children(my_pid)) {
+        current_process->state = PROCESS_STATE_BLOCKED;
+        schedule(regs);
+        /* schedule() never returns — unblock_parent() writes the
+         * child PID directly into our saved trap frame EAX slot */
+    }
+
+    /* No children at all */
+    return -1;
 }

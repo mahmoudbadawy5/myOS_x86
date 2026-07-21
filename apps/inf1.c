@@ -5,6 +5,6 @@ int main()
 {
     while(1)
     {
-        print("Hello");
+        //print("Hello");
     }
 }
