@@ -18,6 +18,15 @@ static uint32_t num_processes = 0, cur_proccess_id = -1;
 
 pcb_t *current_process = NULL;
 
+pcb_t *get_process_by_pid(uint32_t pid)
+{
+    for (uint32_t i = 0; i < num_processes; i++) {
+        if (process_table[i].pid == pid)
+            return &process_table[i];
+    }
+    return 0;
+}
+
 extern fs_node_t *root_dir;
 extern void switch_to_process(pcb_t *next, struct regs* r);
 
@@ -56,6 +65,8 @@ void create_process(const char *app_path, uint32_t parent_pid)
     pcb->files_open[1] = malloc(sizeof(FILE));
     pcb->files_open[1]->file = stdout_node;
     pcb->files_open[1]->flags = FILE_WRITE;
+    for(int i=0;i<19;i++) pcb->proc_name[i] = kernel_path[i];
+    pcb->proc_name[19]='\0';
 
     uint32_t kstack_virt = (uint32_t) malloc(KERNEL_STACK_SIZE);
 
@@ -125,6 +136,7 @@ void schedule(struct regs *r)
         if (cur->signal_pending != 0 && cur->state == PROCESS_STATE_RUNNING) {
             cur->state = PROCESS_STATE_TERMINATED;
             cur->signal_pending = 0;
+            printf("Now killing %08ux %s\n", cur->pid, cur->proc_name);
             unblock_parent(cur->pid);
         }
     }
@@ -157,48 +169,59 @@ void schedule(struct regs *r)
     for(;;);
 }
 
+void remove_child_from_parent(pcb_t *parent, uint32_t child_pid)
+{
+    for (uint32_t i = 0; i < parent->num_children; i++) {
+        if (parent->children_id[i] == child_pid) {
+            parent->children_id[i] = parent->children_id[parent->num_children - 1];
+            parent->num_children--;
+            return;
+        }
+    }
+}
+
 /* Returns PID of a terminated child of `parent_pid`, or 0 if none */
 uint32_t find_terminated_child(uint32_t parent_pid)
 {
-    for (uint32_t i = 0; i < num_processes; i++) {
-        if (process_table[i].parent_id == parent_pid &&
-            process_table[i].state == PROCESS_STATE_TERMINATED) {
-            return process_table[i].pid;
-        }
+    pcb_t *parent = get_process_by_pid(parent_pid);
+    if (!parent) return 0;
+    for (uint32_t i = 0; i < parent->num_children; i++) {
+        pcb_t *child = get_process_by_pid(parent->children_id[i]);
+        if (child && child->state == PROCESS_STATE_TERMINATED)
+            return child->pid;
     }
     return 0;
 }
 
-/* Returns 1 if `pid` is a live (non-terminated) child of `parent_pid` */
+/* Returns 1 if `parent_pid` has live (non-terminated) children */
 int has_live_children(uint32_t parent_pid)
 {
-    for (uint32_t i = 0; i < num_processes; i++) {
-        if (process_table[i].parent_id == parent_pid &&
-            process_table[i].state != PROCESS_STATE_TERMINATED) {
+    pcb_t *parent = get_process_by_pid(parent_pid);
+    if (!parent) return 0;
+    for (uint32_t i = 0; i < parent->num_children; i++) {
+        pcb_t *child = get_process_by_pid(parent->children_id[i]);
+        if (child && child->state != PROCESS_STATE_TERMINATED)
             return 1;
-        }
     }
     return 0;
 }
 
 /* Unblock the parent of `child_pid` and set its return value.
+ * Removes the child from the parent's children list.
  * schedule() never returns, so the return value must be written
  * directly into the parent's saved trap frame (EAX slot at offset 44). */
 void unblock_parent(uint32_t child_pid)
 {
-    for (uint32_t i = 0; i < num_processes; i++) {
-        if (process_table[i].pid == child_pid) {
-            uint32_t parent = process_table[i].parent_id;
-            for (uint32_t j = 0; j < num_processes; j++) {
-                if (process_table[j].pid == parent &&
-                    process_table[j].state == PROCESS_STATE_BLOCKED) {
-                    /* Set return value in parent's saved trap frame */
-                    uint32_t *tf = (uint32_t *)process_table[j].regs.esp;
-                    tf[11] = child_pid; /* EAX is at offset 44 / sizeof(uint32_t) = 11 */
-                    process_table[j].state = PROCESS_STATE_READY;
-                }
-            }
-            break;
-        }
+    pcb_t *child = get_process_by_pid(child_pid);
+    if (!child) return;
+
+    pcb_t *parent = get_process_by_pid(child->parent_id);
+    printf("Unblocking child_pid=%08ux %08ux parent_pid=%08ux, child_name=%s, parent_name=%s\n", child->pid, child_pid, parent?parent->pid:-1, child->proc_name, parent?parent->proc_name:"");
+    if (parent && parent->state == PROCESS_STATE_BLOCKED) {
+        remove_child_from_parent(parent, child_pid);
+        // uint32_t *tf = (uint32_t *)parent->regs.esp;
+        // tf[11] = child_pid; /* EAX is at offset 44 / sizeof(uint32_t) = 11 */
+        parent->state = PROCESS_STATE_READY;
     }
+    printf("Child state %d, parent state %d\n", child->state, parent?parent->state:-1);
 }

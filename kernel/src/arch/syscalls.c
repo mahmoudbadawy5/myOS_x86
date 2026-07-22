@@ -154,6 +154,7 @@ int32_t syscall_wait(struct regs *regs)
     /* Reap any already-terminated child immediately */
     uint32_t dead = find_terminated_child(my_pid);
     if (dead != 0) {
+        remove_child_from_parent(current_process, dead);
         regs->eax = dead;
         return dead;
     }

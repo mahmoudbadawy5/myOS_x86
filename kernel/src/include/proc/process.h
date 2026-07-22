@@ -44,6 +44,7 @@ typedef struct pcb {
 
     int signal_pending;     /* Non-zero = pending signal (e.g. SIGINT=2) */
     uint32_t num_children;  /* Number of live children */
+    char proc_name[20];
 } pcb_t;
 
 void init_multitasking(void);
@@ -53,5 +54,7 @@ void schedule(struct regs *r);
 uint32_t find_terminated_child(uint32_t parent_pid);
 int has_live_children(uint32_t parent_pid);
 void unblock_parent(uint32_t child_pid);
+pcb_t *get_process_by_pid(uint32_t pid);
+void remove_child_from_parent(pcb_t *parent, uint32_t child_pid);
 
 extern pcb_t *current_process;
