@@ -63,7 +63,11 @@ int32_t syscall_open(struct regs *regs)
 int32_t syscall_read(struct regs *regs)
 {
     uint32_t fd = regs->esi;
+    if (fd >= MAX_FILES)
+        return -1;
     FILE *fp = current_process->files_open[fd];
+    if (!fp)
+        return -1;
     int ret = fread((char *)regs->ebx, regs->ecx, regs->edx, fp);
     return ret;
 }
@@ -80,8 +84,14 @@ int32_t syscall_read(struct regs *regs)
 
 int32_t syscall_write(struct regs *regs)
 {
+    uint32_t fd = regs->esi;
+    if (fd >= MAX_FILES)
+        return -1;
+    FILE *fp = current_process->files_open[fd];
+    if (!fp)
+        return -1;
     char *cur = (char *)(regs->ebx);
-    return fwrite(cur, regs->ecx, regs->edx, current_process->files_open[regs->esi]);
+    return fwrite(cur, regs->ecx, regs->edx, fp);
 }
 
 int32_t syscall_exit(struct regs *regs)
@@ -119,11 +129,11 @@ int32_t syscall_sbrk(struct regs *regs)
     uint32_t old_brk = heap->end;
     uint32_t new_brk = old_brk + increment;
 
-    // map new pages
     uint32_t *old_dir = vmm_get_directory();
     set_page_dir((uint32_t*) current_process->regs.cr3);
 
     uint32_t page = ALIGN_PAGE(old_brk);
+    uint32_t last_mapped = old_brk;
     while (page < new_brk) {
         void *phys = alloc_blocks(1);
         if (!phys) {
@@ -131,11 +141,14 @@ int32_t syscall_sbrk(struct regs *regs)
             break;
         }
         map_address_user((void*) page, phys);
+        last_mapped = page + BLOCK_SIZE;
         page += BLOCK_SIZE;
     }
 
-    heap->end = new_brk;
+    heap->end = last_mapped;
     set_page_dir(old_dir);
+    if (last_mapped < new_brk)
+        return -1;
     return old_brk;
 }
 

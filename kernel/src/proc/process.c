@@ -270,13 +270,20 @@ void unblock_parent(uint32_t child_pid)
         parent->state = PROCESS_STATE_READY;
     }
 
-    /* Partial cleanup — can't free kernel stack (we're executing on it) */
+    /* Free address space — switch to kernel page dir first */
+    uint32_t *saved_dir = vmm_get_directory();
+    switch_to_kernel_page_dir();
+    vmm_free_directory((uint32_t *)child->regs.cr3);
+    set_page_dir(saved_dir);
+
+    /* Free FILE structs */
     for (int i = 0; i < 3; i++) {
         if (child->files_open[i]) {
             free(child->files_open[i]);
             child->files_open[i] = 0;
         }
     }
+    /* Free VMA regions */
     vma_t *vma = child->memory_regions;
     while (vma) {
         vma_t *next = vma->next;

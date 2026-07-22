@@ -79,7 +79,7 @@ void map_address(void *virt_address, void *phys_address)
     uint32_t *page = get_page((uint32_t)virt_address, (uint32_t)0);
     if (*page & PAGE_PRESENT) {
         void *old = (void *)(*page & PAGE_ADDR);
-        if (old)
+        if (old && old != phys_address)
             free_blocks(old, 1);
     }
     *page = ((uint32_t)phys_address & PAGE_ADDR) | PAGE_PRESENT | PAGE_RW;
@@ -91,7 +91,7 @@ void map_address_user(void *virt_address, void *phys_address)
     uint32_t *page = get_page((uint32_t)virt_address, (uint32_t)PAGE_USER);
     if (*page & PAGE_PRESENT) {
         void *old = (void *)(*page & PAGE_ADDR);
-        if (old)
+        if (old && old != phys_address)
             free_blocks(old, 1);
     }
     *page = ((uint32_t)phys_address & PAGE_ADDR) | PAGE_PRESENT | PAGE_RW | PAGE_USER;

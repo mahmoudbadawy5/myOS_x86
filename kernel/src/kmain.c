@@ -156,7 +156,6 @@ void init_memory_regions(unsigned long magic, multiboot_info_t *mbd)
 }
 
 void test_files() {
-        char *file_content = malloc(1024);
     fs_node_t *file = get_node("/test_folder/test.txt", root_dir);
     if (!file)
     {
@@ -168,9 +167,11 @@ void test_files() {
     }
     else
     {
+        char *file_content = malloc(file->size + 1);
         read_fs(file, file->size, 1, (uint8_t *)file_content);
         file_content[file->size] = '\0';
         printf("%s\n", file_content);
+        free(file_content);
     }
 
     printf("\n\n\n");
@@ -186,11 +187,12 @@ void test_files() {
     }
     else
     {
-        read_fs(file2, file2->size, 1, (uint8_t *)file_content);
-        file_content[file2->size] = '\0';
-        printf("%s\n", file_content);
+        char *file_content2 = malloc(file2->size + 1);
+        read_fs(file2, file2->size, 1, (uint8_t *)file_content2);
+        file_content2[file2->size] = '\0';
+        printf("%s\n", file_content2);
+        free(file_content2);
     }
-
 }
 
 void kmain(unsigned long magic, multiboot_info_t *mbd)

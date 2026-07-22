@@ -41,13 +41,13 @@ void malloc_split(malloc_header_t *node, int req_size)
 static inline uint32_t irq_save(void)
 {
     uint32_t flags;
-    __asm__ __volatile__("pushfl; pop %0; cli" : "=r"(flags));
+    __asm__ __volatile__("pushfl; pop %0; cli" : "=r"(flags) :: "memory", "cc");
     return flags;
 }
 
 static inline void irq_restore(uint32_t flags)
 {
-    __asm__ __volatile__("push %0; popfl" :: "r"(flags));
+    __asm__ __volatile__("push %0; popfl" :: "r"(flags) : "memory", "cc");
 }
 
 void *malloc(uint32_t size)

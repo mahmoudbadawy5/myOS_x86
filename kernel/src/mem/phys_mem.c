@@ -54,7 +54,7 @@ int find_first_free_blocks(uint32_t size)
     {
         if (mem_bitmap[i / 32] == 0)
         {
-            i += 31;
+            i = ((i / 32) + 1) * 32 - 1;
             continue;
         }
         bool found = true;

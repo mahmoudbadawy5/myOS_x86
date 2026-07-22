@@ -131,7 +131,7 @@ void run_command(int argc, char **args)
             path[i + 1] = args[0][i];
 
         int bin_len = len + 5;
-        if (bin_len < 127)
+        if (bin_len <= 127)
         {
             path[bin_len - 4] = '.';
             path[bin_len - 3] = 'b';

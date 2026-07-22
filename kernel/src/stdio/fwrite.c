@@ -8,5 +8,8 @@ size_t fwrite(const char *buf, size_t size, size_t count, FILE *fp)
         return 0;
     if ((fp->flags & FILE_WRITE) != FILE_WRITE)
         return 0;
-    return write_fs(fp->file, size * count, 1, (uint8_t *)buf);
+    size_t total = size * count;
+    if (size && total / size != count)
+        return 0;
+    return write_fs(fp->file, total, 1, (uint8_t *)buf);
 }
