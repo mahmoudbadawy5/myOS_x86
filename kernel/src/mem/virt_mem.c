@@ -24,6 +24,13 @@ void enable_paging()
                          "movl %EAX, %CR0;");
 }
 
+static inline void tlb_flush(void)
+{
+    uint32_t cr3;
+    __asm__ __volatile__("mov %%cr3, %0" : "=r"(cr3));
+    __asm__ __volatile__("mov %0, %%cr3" :: "r"(cr3));
+}
+
 uint32_t *get_page(uint32_t virt_address, uint32_t additional_flags)
 {
     uint32_t pd_entry = (virt_address) >> 22;
@@ -64,30 +71,51 @@ void free_page(uint32_t *page)
     void *address = (void *)(*page & PAGE_ADDR);
     if (address)
         free_blocks(address, 1);
-    *page &= ~PAGE_PRESENT;
+    *page = 0;
 }
 
 void map_address(void *virt_address, void *phys_address)
 {
     uint32_t *page = get_page((uint32_t)virt_address, (uint32_t)0);
-    *page &= ~PAGE_ADDR;                           // Clear old address
-    *page |= ((uint32_t)phys_address & PAGE_ADDR); // Set new address
-    *page |= PAGE_PRESENT | PAGE_RW;                // Set page present, kernel only
+    if (*page & PAGE_PRESENT) {
+        void *old = (void *)(*page & PAGE_ADDR);
+        if (old)
+            free_blocks(old, 1);
+    }
+    *page = ((uint32_t)phys_address & PAGE_ADDR) | PAGE_PRESENT | PAGE_RW;
+    tlb_flush();
 }
 
 void map_address_user(void *virt_address, void *phys_address)
 {
     uint32_t *page = get_page((uint32_t)virt_address, (uint32_t)PAGE_USER);
-    *page &= ~PAGE_ADDR;
-    *page |= ((uint32_t)phys_address & PAGE_ADDR);
-    *page |= PAGE_PRESENT | PAGE_RW | PAGE_USER;    // User-accessible (ring 3)
+    if (*page & PAGE_PRESENT) {
+        void *old = (void *)(*page & PAGE_ADDR);
+        if (old)
+            free_blocks(old, 1);
+    }
+    *page = ((uint32_t)phys_address & PAGE_ADDR) | PAGE_PRESENT | PAGE_RW | PAGE_USER;
+    tlb_flush();
 }
 
 void unmap_address(void *virt_address)
 {
-    uint32_t *page = get_page((uint32_t)virt_address, (uint32_t)PAGE_USER);
-    *page &= ~PAGE_ADDR;
-    *page &= ~PAGE_PRESENT;
+    uint32_t pd_entry = (uint32_t)virt_address >> 22;
+    uint32_t pt_entry = ((uint32_t)virt_address >> 12) & 0x3FF;
+
+    if (!(cur_page_dir[pd_entry] & PAGE_PRESENT))
+        return;
+
+    uint32_t *table = (uint32_t *)((cur_page_dir[pd_entry] & PAGE_ADDR) + KERNEL_VIRTUAL_BASE);
+    uint32_t *page = &table[pt_entry];
+
+    if (*page & PAGE_PRESENT) {
+        void *phys = (void *)(*page & PAGE_ADDR);
+        if (phys)
+            free_blocks(phys, 1);
+    }
+    *page = 0;
+    tlb_flush();
 }
 
 void init_paging()
@@ -151,6 +179,7 @@ void vmm_free_directory(uint32_t *page_dir)
         free_blocks((uint32_t *)(dir[i] & PAGE_ADDR), 1);
     }
     free_blocks(page_dir, 1);
+    tlb_flush();
 }
 
 void switch_to_kernel_page_dir(void)

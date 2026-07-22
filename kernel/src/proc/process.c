@@ -69,6 +69,7 @@ void create_process(const char *app_path, uint32_t parent_pid)
     pcb->proc_name[19]='\0';
 
     uint32_t kstack_virt = (uint32_t) malloc(KERNEL_STACK_SIZE);
+    pcb->kernel_stack_alloc = kstack_virt;
 
     uint32_t kstack_base = kstack_virt + KERNEL_STACK_SIZE;
     uint32_t iret_frame = (kstack_base - 32) & ~0xF;
@@ -78,6 +79,7 @@ void create_process(const char *app_path, uint32_t parent_pid)
     if (parent_pid != 0) {
         for (uint32_t j = 0; j < num_processes; j++) {
             if (process_table[j].pid == parent_pid) {
+                process_table[j].children_id[process_table[j].num_children] = pcb->pid;
                 process_table[j].num_children++;
                 break;
             }
@@ -102,6 +104,7 @@ void create_process(const char *app_path, uint32_t parent_pid)
 
     if(load_elf(pcb, kernel_path) != 0) {
         set_page_dir((uint32_t *)old_cr3);
+        vmm_free_directory(new_dir);
         free(pcb->files_open[0]);
         free(pcb->files_open[1]);
         free((void *)kstack_virt);
@@ -180,6 +183,17 @@ void remove_child_from_parent(pcb_t *parent, uint32_t child_pid)
     }
 }
 
+/* Terminate all live children of a dying parent to prevent orphans */
+void kill_children_of(uint32_t parent_pid)
+{
+    for (uint32_t i = 0; i < MAX_PROCESSES; i++) {
+        if (process_table[i].parent_id == parent_pid &&
+            process_table[i].state != PROCESS_STATE_TERMINATED) {
+            process_table[i].state = PROCESS_STATE_TERMINATED;
+        }
+    }
+}
+
 /* Returns PID of a terminated child of `parent_pid`, or 0 if none */
 uint32_t find_terminated_child(uint32_t parent_pid)
 {
@@ -206,6 +220,39 @@ int has_live_children(uint32_t parent_pid)
     return 0;
 }
 
+/* Free all resources of a terminated child. Must be called
+ * while the child is no longer referenced by any parent's
+ * children list. Switches to kernel page directory for cleanup. */
+void process_cleanup_child(pcb_t *child)
+{
+    /* Free kernel stack */
+    if (child->kernel_stack_alloc)
+        free((void *)child->kernel_stack_alloc);
+
+    /* Free address space */
+    uint32_t *saved_dir = vmm_get_directory();
+    switch_to_kernel_page_dir();
+    vmm_free_directory((uint32_t *)child->regs.cr3);
+    set_page_dir(saved_dir);
+
+    /* Free FILE structs */
+    for (int i = 0; i < 3; i++) {
+        if (child->files_open[i]) {
+            free(child->files_open[i]);
+            child->files_open[i] = 0;
+        }
+    }
+
+    /* Free VMA regions */
+    vma_t *vma = child->memory_regions;
+    while (vma) {
+        vma_t *next = vma->next;
+        free(vma);
+        vma = next;
+    }
+    child->memory_regions = 0;
+}
+
 /* Unblock the parent of `child_pid` and set its return value.
  * Removes the child from the parent's children list.
  * schedule() never returns, so the return value must be written
@@ -216,12 +263,25 @@ void unblock_parent(uint32_t child_pid)
     if (!child) return;
 
     pcb_t *parent = get_process_by_pid(child->parent_id);
-    printf("Unblocking child_pid=%08ux %08ux parent_pid=%08ux, child_name=%s, parent_name=%s\n", child->pid, child_pid, parent?parent->pid:-1, child->proc_name, parent?parent->proc_name:"");
     if (parent && parent->state == PROCESS_STATE_BLOCKED) {
         remove_child_from_parent(parent, child_pid);
-        // uint32_t *tf = (uint32_t *)parent->regs.esp;
-        // tf[11] = child_pid; /* EAX is at offset 44 / sizeof(uint32_t) = 11 */
+        uint32_t *tf = (uint32_t *)parent->regs.esp;
+        tf[11] = child_pid; /* EAX is at offset 44 / sizeof(uint32_t) = 11 */
         parent->state = PROCESS_STATE_READY;
     }
-    printf("Child state %d, parent state %d\n", child->state, parent?parent->state:-1);
+
+    /* Partial cleanup — can't free kernel stack (we're executing on it) */
+    for (int i = 0; i < 3; i++) {
+        if (child->files_open[i]) {
+            free(child->files_open[i]);
+            child->files_open[i] = 0;
+        }
+    }
+    vma_t *vma = child->memory_regions;
+    while (vma) {
+        vma_t *next = vma->next;
+        free(vma);
+        vma = next;
+    }
+    child->memory_regions = 0;
 }

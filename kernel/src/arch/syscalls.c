@@ -88,6 +88,9 @@ int32_t syscall_exit(struct regs *regs)
 {
     (void)regs;
     if (current_process) {
+        /* Kill all live children so they don't become orphans */
+        kill_children_of(current_process->pid);
+
         current_process->state = PROCESS_STATE_TERMINATED;
         unblock_parent(current_process->pid);
         current_process = NULL;
@@ -155,6 +158,11 @@ int32_t syscall_wait(struct regs *regs)
     uint32_t dead = find_terminated_child(my_pid);
     if (dead != 0) {
         remove_child_from_parent(current_process, dead);
+        pcb_t *child = get_process_by_pid(dead);
+        if (child) {
+            process_cleanup_child(child);
+            child->state = PROCESS_STATE_TERMINATED; /* mark slot reusable */
+        }
         regs->eax = dead;
         return dead;
     }
