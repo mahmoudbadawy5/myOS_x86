@@ -30,3 +30,6 @@ int32_t syscall_chdir(struct regs *regs);
 // Defined in syscalls_asm.asm
 
 extern void handle_syscalls();
+
+/* Helper: copies a user path into buf, prepending cwd if relative */
+void resolve_path(const char *user_path, char *buf, int buf_size);

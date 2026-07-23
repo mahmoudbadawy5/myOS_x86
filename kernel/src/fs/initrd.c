@@ -16,12 +16,17 @@ uint32_t initrd_read_fs(fs_node_t *node, uint32_t size, uint32_t units, uint8_t 
 {
     if ((node->flags & FS_DIRECTORY) == FS_DIRECTORY)
         return 0;
-    for (int i = 0; i < size * units; i++)
+    uint32_t total = size * units;
+    if (node->seek_offset >= node->size)
+        return 0;
+    if (node->seek_offset + total > node->size)
+        total = node->size - node->seek_offset;
+    for (uint32_t i = 0; i < total; i++)
     {
         buffer[i] = *(char *)(node->impl + node->seek_offset + i);
     }
-    node->seek_offset += size * units;
-    return units;
+    node->seek_offset += total;
+    return total / size ? total / size : (total > 0 ? 1 : 0);
 }
 
 void initrd_seek_fs(fs_node_t *node, uint32_t offset, uint8_t type)

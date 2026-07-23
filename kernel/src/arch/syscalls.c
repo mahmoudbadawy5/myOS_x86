@@ -11,6 +11,82 @@
 #include <mem/malloc.h>
 #include <fs/pipe.h>
 
+void resolve_path(const char *user_path, char *buf, int buf_size)
+{
+    if (!user_path || !buf || buf_size <= 0) {
+        if (buf && buf_size > 0) buf[0] = '\0';
+        return;
+    }
+
+    /* Copy user path to kernel */
+    char path[256];
+    int len = 0;
+    while (user_path[len] && len < 255) {
+        path[len] = user_path[len];
+        len++;
+    }
+    path[len] = '\0';
+
+    /* Build absolute path: start with cwd if relative */
+    char abs[256];
+    int ai = 0;
+    if (path[0] != '/') {
+        char *cwd = current_process->cwd;
+        while (cwd[ai] && ai < 254)
+            abs[ai] = cwd[ai], ai++;
+        if (ai > 0 && abs[ai - 1] != '/')
+            abs[ai++] = '/';
+    }
+    int pi = 0;
+    while (path[pi] && ai < 254)
+        abs[ai++] = path[pi++];
+    abs[ai] = '\0';
+
+    /* Normalize: resolve . and .. */
+    char norm[256];
+    int ni = 0;
+    int i = 0;
+    while (abs[i]) {
+        /* Skip slashes */
+        if (abs[i] == '/') {
+            i++;
+            continue;
+        }
+        /* Find end of component */
+        int start = i;
+        while (abs[i] && abs[i] != '/')
+            i++;
+        int clen = i - start;
+
+        if (clen == 1 && abs[start] == '.') {
+            /* Skip . */
+        } else if (clen == 2 && abs[start] == '.' && abs[start + 1] == '.') {
+            /* Go up: remove last component */
+            if (ni > 0) {
+                ni--; /* remove trailing slash */
+                while (ni > 0 && norm[ni - 1] != '/')
+                    ni--;
+            }
+        } else {
+            norm[ni++] = '/';
+            for (int j = start; j < i && ni < 255; j++)
+                norm[ni++] = abs[j];
+        }
+    }
+    if (ni == 0) {
+        norm[ni++] = '/';
+    }
+    norm[ni] = '\0';
+
+    /* Copy to output */
+    int ci = 0;
+    while (norm[ci] && ci < buf_size - 1) {
+        buf[ci] = norm[ci];
+        ci++;
+    }
+    buf[ci] = '\0';
+}
+
 int32_t (*syscalls[MAX_SYSCALLS])(struct regs *) = {
     syscall_test0,
     syscall_test1,
@@ -61,7 +137,9 @@ int32_t syscall_test1(struct regs *regs)
 
 int32_t syscall_open(struct regs *regs)
 {
-    return fopen((char *)regs->ebx, (char *)regs->ecx);
+    char path[256];
+    resolve_path((char *)regs->ebx, path, sizeof(path));
+    return fopen(path, (char *)regs->ecx);
 }
 
 /*
@@ -492,14 +570,8 @@ int32_t syscall_readdir(struct regs *regs)
     if (!path_user || !buf_user || max_entries == 0)
         return -1;
 
-    /* Copy path to kernel */
     char path[256];
-    int len = 0;
-    while (path_user[len] && len < 255) {
-        path[len] = path_user[len];
-        len++;
-    }
-    path[len] = '\0';
+    resolve_path(path_user, path, sizeof(path));
 
     fs_node_t *node = get_node(path, root_dir);
     if (!node)
@@ -544,12 +616,7 @@ int32_t syscall_stat(struct regs *regs)
         return -1;
 
     char path[256];
-    int len = 0;
-    while (path_user[len] && len < 255) {
-        path[len] = path_user[len];
-        len++;
-    }
-    path[len] = '\0';
+    resolve_path(path_user, path, sizeof(path));
 
     fs_node_t *node = get_node(path, root_dir);
     if (!node)
@@ -597,12 +664,7 @@ int32_t syscall_chdir(struct regs *regs)
         return -1;
 
     char path[256];
-    int len = 0;
-    while (path_user[len] && len < 255) {
-        path[len] = path_user[len];
-        len++;
-    }
-    path[len] = '\0';
+    resolve_path(path_user, path, sizeof(path));
 
     fs_node_t *node = get_node(path, root_dir);
     if (!node)
@@ -610,7 +672,7 @@ int32_t syscall_chdir(struct regs *regs)
     if (!(node->flags & FS_DIRECTORY))
         return -1;
 
-    /* Copy path to cwd */
+    /* Store resolved absolute path as cwd */
     int i = 0;
     while (path[i] && i < 254) {
         current_process->cwd[i] = path[i];

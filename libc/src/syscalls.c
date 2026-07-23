@@ -31,7 +31,7 @@ int sys_read(void *buf, int len)
 int sys_read_fd(int fd, void *buf, int len)
 {
     int ret;
-    __asm__ __volatile__("int $0x80" : "=a"(ret) : "a"(3), "b"(buf), "c"(fd), "d"(len), "S"(0) : "memory", "cc");
+    __asm__ __volatile__("int $0x80" : "=a"(ret) : "a"(3), "b"(buf), "c"(1), "d"(len), "S"(fd) : "memory", "cc");
     return ret;
 }
 
@@ -45,7 +45,7 @@ int sys_write(const char *buf, int len)
 int sys_write_fd(int fd, const char *buf, int len)
 {
     int ret;
-    __asm__ __volatile__("int $0x80" : "=a"(ret) : "a"(4), "b"(buf), "c"(fd), "d"(len), "S"(1) : "memory", "cc");
+    __asm__ __volatile__("int $0x80" : "=a"(ret) : "a"(4), "b"(buf), "c"(1), "d"(len), "S"(fd) : "memory", "cc");
     return ret;
 }
 
