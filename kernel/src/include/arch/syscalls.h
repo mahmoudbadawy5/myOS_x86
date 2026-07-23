@@ -3,7 +3,7 @@
 #include <types.h>
 #include <isr.h>
 
-#define MAX_SYSCALLS 20
+#define MAX_SYSCALLS 24
 
 void init_syscalls(void);
 int32_t syscall_test0(struct regs *regs);
@@ -26,6 +26,10 @@ int32_t syscall_readdir(struct regs *regs);
 int32_t syscall_stat(struct regs *regs);
 int32_t syscall_getcwd(struct regs *regs);
 int32_t syscall_chdir(struct regs *regs);
+int32_t syscall_close(struct regs *regs);
+int32_t syscall_mkdir(struct regs *regs);
+int32_t syscall_unlink(struct regs *regs);
+int32_t syscall_ps(struct regs *regs);
 
 // Defined in syscalls_asm.asm
 

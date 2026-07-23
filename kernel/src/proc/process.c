@@ -206,7 +206,6 @@ void schedule(struct regs *r)
         if (cur->signal_pending != 0 && cur->state == PROCESS_STATE_RUNNING) {
             cur->state = PROCESS_STATE_TERMINATED;
             cur->signal_pending = 0;
-            printf("Now killing %08ux %s\n", cur->pid, cur->proc_name);
             unblock_parent(cur->pid);
         }
     }
@@ -303,7 +302,7 @@ void process_cleanup_child(pcb_t *child)
     set_page_dir(saved_dir);
 
     /* Free FILE structs */
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < MAX_FILES; i++) {
         if (child->files_open[i]) {
             free(child->files_open[i]);
             child->files_open[i] = 0;
@@ -344,7 +343,7 @@ void unblock_parent(uint32_t child_pid)
     set_page_dir(saved_dir);
 
     /* Free FILE structs */
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < MAX_FILES; i++) {
         if (child->files_open[i]) {
             free(child->files_open[i]);
             child->files_open[i] = 0;

@@ -4,17 +4,15 @@
 int main(int argc, char **argv)
 {
     if (argc < 2) {
-        print("touch: missing file operand\n");
+        print("rm: missing operand\n");
         return 1;
     }
 
-    int fd = sys_open(argv[1], "w");
-    if (fd < 0) {
-        print("touch: ");
+    if (sys_unlink(argv[1]) < 0) {
+        print("rm: cannot remove '");
         print(argv[1]);
-        print(": cannot create\n");
+        print("'\n");
         return 1;
     }
-    sys_close(fd);
     return 0;
 }

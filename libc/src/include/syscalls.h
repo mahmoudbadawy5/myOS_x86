@@ -8,7 +8,7 @@ int sys_read(void *buf, int len);
 int sys_read_fd(int fd, void *buf, int len);
 int sys_write(const char *buf, int len);
 int sys_write_fd(int fd, const char *buf, int len);
-void sys_exit(void);
+void sys_exit(int status);
 void *sys_sbrk(unsigned int increment);
 int sys_spawn(const char *path);
 int sys_wait(void);
@@ -22,5 +22,9 @@ int sys_readdir(const char *path, char *buf, int max_entries);
 int sys_stat(const char *path, unsigned int *stat_buf);
 int sys_getcwd(char *buf, unsigned int size);
 int sys_chdir(const char *path);
+int sys_close(int fd);
+int sys_mkdir(const char *path);
+int sys_unlink(const char *path);
+int sys_ps(void *buf, int max_entries);
 
 #endif

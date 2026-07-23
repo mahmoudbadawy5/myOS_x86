@@ -13,10 +13,10 @@ unsigned int read(char *buf, int len)
     return sys_read(buf, len);
 }
 
-unsigned int exit(void)
+void exit(int status)
 {
-    sys_exit();
-    return 0;
+    sys_exit(status);
+    for(;;);
 }
 
 unsigned int test_syscall0(unsigned int val)
