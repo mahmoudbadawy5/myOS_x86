@@ -18,6 +18,14 @@ static uint32_t num_processes = 0, cur_proccess_id = -1;
 
 pcb_t *current_process = NULL;
 
+/* Idle loop — runs when no other process is available.
+ * Executes in ring 0 (kernel mode) via IRET with CS=0x08. */
+static void idle_loop(void)
+{
+    for (;;)
+        __asm__ __volatile__("hlt");
+}
+
 pcb_t *get_process_by_pid(uint32_t pid)
 {
     for (uint32_t i = 0; i < num_processes; i++) {
@@ -36,6 +44,52 @@ void init_multitasking(void)
     current_process = NULL;
     next_pid = 1;
     num_processes = 0;
+
+    /* Create idle process (PID 0) — runs a HLT loop in ring 0.
+     * Always READY; scheduler picks it when no other process is available. */
+    pcb_t *idle = &process_table[0];
+    idle->pid = 0;
+    idle->state = PROCESS_STATE_NEW;
+    idle->parent_id = 0;
+    idle->signal_pending = 0;
+    idle->num_children = 0;
+    idle->proc_name[0] = 'i';
+    idle->proc_name[1] = 'd';
+    idle->proc_name[2] = 'l';
+    idle->proc_name[3] = 'e';
+    idle->proc_name[4] = '\0';
+    idle->cwd[0] = '/';
+    idle->cwd[1] = '\0';
+
+    /* Allocate kernel stack for idle */
+    uint32_t kstack_virt = (uint32_t)malloc(KERNEL_STACK_SIZE);
+    idle->kernel_stack_alloc = kstack_virt;
+    idle->kernel_stack_bottom = kstack_virt;
+    uint32_t kstack_base = kstack_virt + KERNEL_STACK_SIZE;
+    uint32_t iret_frame = (kstack_base - 32) & ~0xF;
+    idle->kernel_stack_top = iret_frame;
+
+    /* Build IRET frame: EIP=idle_loop, CS=0x08 (kernel), EFLAGS=IF=1,
+     * ESP=kernel stack top, SS=0x10 (kernel data).
+     * Idle runs in ring 0 — no user segments needed. */
+    uint32_t *frame = (uint32_t *)iret_frame;
+    frame[0] = (uint32_t)idle_loop;  /* EIP */
+    frame[1] = 0x08;                 /* CS (kernel code) */
+    frame[2] = 0x202;                /* EFLAGS (IF=1) */
+    frame[3] = iret_frame;           /* ESP (use same stack) */
+    frame[4] = 0x10;                 /* SS (kernel data) */
+
+    /* Set up registers with kernel segments */
+    idle->regs.cs = 0x08;
+    idle->regs.ds = 0x10;
+    idle->regs.es = 0x10;
+    idle->regs.fs = 0x10;
+    idle->regs.gs = 0x10;
+    idle->regs.ss = 0x10;
+    idle->regs.eflags = 0x202;
+    idle->regs.cr3 = (uint32_t)vmm_get_directory();
+
+    num_processes = 1;
 }
 
 /* Shared by create_process and exec: clone page dir, load ELF, build argv stack. */
