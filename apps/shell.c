@@ -6,7 +6,7 @@
 
 void print_prompt(void)
 {
-    print("myOS> ");
+    print("\x1b\x0FmyOS> ");
 }
 
 int read_line(char *buf, int max)
@@ -88,9 +88,9 @@ void run_command(int argc, char **args)
         print("  touch   - Create a file\n");
         print("  <prog>  - Run a program\n");
     }
-    else if (strcmp(args[0], "clear") == 0)
+    else     if (strcmp(args[0], "clear") == 0)
     {
-        print("\x1b\x40");
+        print("\x1b\x0F\x0C");
     }
     else if (strcmp(args[0], "cd") == 0)
     {
@@ -127,7 +127,7 @@ int main(void)
     static char line[LINE_MAX];
     static char *args[MAX_ARGS];
 
-    print("\x1b\x40");
+    print("\x1b\x0F\x0C");
     print("myOS Shell v0.1\n");
 
     while (1)
@@ -138,6 +138,7 @@ int main(void)
             int argc = parse_args(line, args);
             if (argc > 0)
                 run_command(argc, args);
+            print("\x1b\x0F");
         }
     }
 }

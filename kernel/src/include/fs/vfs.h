@@ -24,6 +24,13 @@ typedef void (*close_type_t)(struct fs_node *);                                 
 typedef struct dirent *(*readdir_type_t)(struct fs_node *);                        // Dir,  List dir (Gets names of files)
 typedef struct fs_node *(*finddir_type_t)(struct fs_node *, char *name);           //
 
+typedef struct mount_entry
+{
+    char name[128];
+    struct fs_node *node;
+    struct mount_entry *next;
+} mount_entry_t;
+
 typedef struct fs_node
 {
     char name[128];
@@ -40,6 +47,7 @@ typedef struct fs_node
     close_type_t close;
     readdir_type_t readdir;
     finddir_type_t finddir;
+    mount_entry_t *mounts;
 } fs_node_t;
 
 typedef struct dirent

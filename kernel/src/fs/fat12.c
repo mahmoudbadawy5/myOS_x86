@@ -452,18 +452,18 @@ static void fat12_iterate_dir_write(fs_node_t *node,
             fat12_dir_entry_t *entries = (fat12_dir_entry_t *)sector_buf;
             bool modified = false;
 
-            for (uint32_t i = 0; i < entries_per_sector; i++) {
-                if (entries[i].name[0] == 0x00) {
-                    callback(node, &entries[i], ctx);
-                    modified = true;
-                    break;
-                }
-                if ((uint8_t)entries[i].name[0] == 0xE5) {
-                    callback(node, &entries[i], ctx);
-                    modified = true;
-                    break;
-                }
+        for (uint32_t i = 0; i < entries_per_sector; i++) {
+            if (entries[i].name[0] == 0x00) {
+                callback(node, &entries[i], ctx);
+                modified = true;
+                break;
             }
+            if ((uint8_t)entries[i].name[0] == 0xE5) {
+                callback(node, &entries[i], ctx);
+                modified = true;
+                break;
+            }
+        }
 
             if (modified) {
                 ata_write_sectors(lba, 1, sector_buf);
@@ -616,25 +616,30 @@ static void create_file_callback(fs_node_t *node, fat12_dir_entry_t *entry, void
     if (c->result)
         return;
 
-    if (entry->name[0] == 0x00 || (uint8_t)entry->name[0] == 0xE5) {
-        char entry_name[8], entry_ext[3];
-        fat12_name_to_83(c->name, entry_name, entry_ext);
+    char entry_name[8], entry_ext[3];
+    fat12_name_to_83(c->name, entry_name, entry_ext);
 
-        uint32_t cluster = fat12_allocate_cluster();
+    uint32_t cluster = fat12_allocate_cluster();
 
-        memset((uint8_t *)entry, 0, sizeof(fat12_dir_entry_t));
-        memcpy((uint8_t *)entry->name, (uint8_t *)entry_name, 8);
-        memcpy((uint8_t *)entry->ext, (uint8_t *)entry_ext, 3);
-        entry->attributes = 0x20;
-        entry->first_cluster = cluster;
-        entry->file_size = 0;
+    memset((uint8_t *)entry, 0, sizeof(fat12_dir_entry_t));
+    memcpy((uint8_t *)entry->name, (uint8_t *)entry_name, 8);
+    memcpy((uint8_t *)entry->ext, (uint8_t *)entry_ext, 3);
+    entry->attributes = 0x20;
+    entry->first_cluster = cluster;
+    entry->file_size = 0;
 
-        c->result = fat12_make_node(entry);
-    }
+    c->result = fat12_make_node(entry);
 }
 
 fs_node_t *fat12_create_file(fs_node_t *dir_node, const char *name)
 {
+    struct finddir_ctx fctx;
+    fctx.name = name;
+    fctx.result = NULL;
+    fat12_iterate_dir(dir_node, finddir_callback, &fctx);
+    if (fctx.result)
+        return fctx.result;
+
     struct create_file_ctx ctx;
     ctx.name = name;
     ctx.result = NULL;

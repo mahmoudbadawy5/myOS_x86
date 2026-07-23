@@ -80,6 +80,7 @@ fs_node_t *initrd_finddir_fs(fs_node_t *node, char *name)
 fs_node_t *initrd_loadfile_fs_node(char *name, uint32_t start, uint32_t size)
 {
     fs_node_t *file = malloc(sizeof(fs_node_t));
+    memset((uint8_t *)file, 0, sizeof(fs_node_t));
     file->flags = FS_FILE;
     strcpy(file->name, name);
     file->impl = start + initrd_location;
@@ -93,6 +94,7 @@ fs_node_t *initrd_loadfile_fs_node(char *name, uint32_t start, uint32_t size)
 fs_node_t *initrd_loaddir_fs_node(char *name, uint32_t start)
 {
     fs_node_t *dir = malloc(sizeof(fs_node_t));
+    memset((uint8_t *)dir, 0, sizeof(fs_node_t));
     dir->flags = FS_DIRECTORY;
     strcpy(dir->name, name);
     dir->impl = start + initrd_location;
