@@ -110,3 +110,10 @@ int sys_getpid(void)
     __asm__ __volatile__("int $0x80" : "=a"(ret) : "a"(14));
     return ret;
 }
+
+int sys_lseek(int fd, int offset, int whence)
+{
+    int ret;
+    __asm__ __volatile__("int $0x80" : "=a"(ret) : "a"(15), "b"(fd), "c"(offset), "d"(whence));
+    return ret;
+}

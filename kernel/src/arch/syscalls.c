@@ -27,6 +27,7 @@ int32_t (*syscalls[MAX_SYSCALLS])(struct regs *) = {
     syscall_pipe,
     syscall_kill,
     syscall_getpid,
+    syscall_lseek,
 };
 
 void init_syscalls(void)
@@ -434,4 +435,33 @@ int32_t syscall_getpid(struct regs *regs)
     if (!current_process)
         return 0;
     return current_process->pid;
+}
+
+/*
+    lseek — reposition file offset.
+    ebx: file descriptor
+    ecx: offset
+    edx: whence (0=SEEK_SET, 1=SEEK_CUR, 2=SEEK_END)
+    Returns: new offset from start, or -1 on error.
+*/
+int32_t syscall_lseek(struct regs *regs)
+{
+    uint32_t fd = regs->ebx;
+    int32_t offset = (int32_t)regs->ecx;
+    uint32_t whence = regs->edx;
+
+    if (fd >= MAX_FILES)
+        return -1;
+    FILE *fp = current_process->files_open[fd];
+    if (!fp || !fp->file)
+        return -1;
+
+    /* For SEEK_CUR, add current offset before calling seek_fs */
+    if (whence == 1) { /* SEEK_CUR */
+        offset += fp->file->seek_offset;
+        whence = 0; /* now treat as SEEK_SET */
+    }
+
+    seek_fs(fp->file, offset, whence);
+    return (int32_t)fp->file->seek_offset;
 }

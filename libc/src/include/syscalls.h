@@ -17,5 +17,6 @@ int sys_dup(int fd);
 int sys_pipe(int fds[2]);
 int sys_kill(int pid, int signal);
 int sys_getpid(void);
+int sys_lseek(int fd, int offset, int whence);
 
 #endif

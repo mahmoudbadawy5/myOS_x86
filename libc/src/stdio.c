@@ -228,16 +228,20 @@ size_t fwrite(const void *ptr, size_t size, size_t nmemb, FILE *fp)
 
 int fseek(FILE *fp, int offset, int whence)
 {
-    (void)fp; (void)offset; (void)whence;
-    /* TODO: needs lseek syscall */
-    return -1;
+    if (!fp || fp->fd < 0) return -1;
+    int ret = sys_lseek(fp->fd, offset, whence);
+    if (ret < 0) {
+        fp->error = 1;
+        return -1;
+    }
+    fp->eof = 0;
+    return 0;
 }
 
 int ftell(FILE *fp)
 {
-    (void)fp;
-    /* TODO: needs lseek syscall */
-    return -1;
+    if (!fp || fp->fd < 0) return -1;
+    return sys_lseek(fp->fd, 0, SEEK_CUR);
 }
 
 int feof(FILE *fp)
