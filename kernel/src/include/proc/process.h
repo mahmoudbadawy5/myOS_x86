@@ -50,6 +50,7 @@ typedef struct pcb {
 
 void init_multitasking(void);
 void create_process(const char *app_name, uint32_t parent_pid, int argc, const char **argv);
+int load_program(pcb_t *proc, const char *path, int argc, const char **argv);
 void schedule(struct regs *r);
 
 uint32_t find_terminated_child(uint32_t parent_pid);
