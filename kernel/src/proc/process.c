@@ -346,14 +346,19 @@ int has_live_children(uint32_t parent_pid)
 void process_cleanup_child(pcb_t *child)
 {
     /* Free kernel stack */
-    if (child->kernel_stack_alloc)
+    if (child->kernel_stack_alloc) {
         free((void *)child->kernel_stack_alloc);
+        child->kernel_stack_alloc = 0;
+    }
 
     /* Free address space */
-    uint32_t *saved_dir = vmm_get_directory();
-    switch_to_kernel_page_dir();
-    vmm_free_directory((uint32_t *)child->regs.cr3);
-    set_page_dir(saved_dir);
+    if (child->regs.cr3) {
+        uint32_t *saved_dir = vmm_get_directory();
+        switch_to_kernel_page_dir();
+        vmm_free_directory((uint32_t *)child->regs.cr3);
+        set_page_dir(saved_dir);
+        child->regs.cr3 = 0;
+    }
 
     /* Free FILE structs — decrement refcount, close node if last reference */
     for (int i = 0; i < MAX_FILES; i++) {
@@ -483,9 +488,10 @@ pcb_t *fork_process(pcb_t *parent, struct regs *regs)
 }
 
 /* Unblock the parent of `child_pid` and set its return value.
- * Removes the child from the parent's children list.
- * schedule() never returns, so the return value must be written
- * directly into the parent's saved trap frame (EAX slot at offset 44). */
+ * Does NOT free child resources or remove from children list —
+ * that is done by process_cleanup_child() when the parent reaps
+ * the child via wait().  Keeping the child in the children list
+ * as a zombie allows a subsequent wait() to find and clean it up. */
 void unblock_parent(uint32_t child_pid)
 {
     pcb_t *child = get_process_by_pid(child_pid);
@@ -493,39 +499,8 @@ void unblock_parent(uint32_t child_pid)
 
     pcb_t *parent = get_process_by_pid(child->parent_id);
     if (parent && parent->state == PROCESS_STATE_BLOCKED) {
-        remove_child_from_parent(parent, child_pid);
         uint32_t *tf = (uint32_t *)parent->regs.esp;
         tf[11] = child_pid; /* EAX is at offset 44 / sizeof(uint32_t) = 11 */
         parent->state = PROCESS_STATE_READY;
     }
-
-    /* Free address space — switch to kernel page dir first */
-    uint32_t *saved_dir = vmm_get_directory();
-    switch_to_kernel_page_dir();
-    vmm_free_directory((uint32_t *)child->regs.cr3);
-    set_page_dir(saved_dir);
-
-    /* Free FILE structs — decrement refcount, close node if last reference */
-    for (int i = 0; i < MAX_FILES; i++) {
-        if (child->files_open[i]) {
-            FILE *fp = child->files_open[i];
-            fs_node_t *node = fp->file;
-            if (node && node->refcount > 0)
-                node->refcount--;
-            if (node && node->refcount == 0) {
-                close_fs(node);
-                free(node);
-            }
-            free(fp);
-            child->files_open[i] = 0;
-        }
-    }
-    /* Free VMA regions */
-    vma_t *vma = child->memory_regions;
-    while (vma) {
-        vma_t *next = vma->next;
-        free(vma);
-        vma = next;
-    }
-    child->memory_regions = 0;
 }

@@ -358,7 +358,7 @@ int32_t syscall_wait(struct regs *regs)
         pcb_t *child = get_process_by_pid(dead);
         if (child) {
             process_cleanup_child(child);
-            child->state = PROCESS_STATE_TERMINATED; /* mark slot reusable */
+            child->state = 0; /* Mark slot free — prevents double-reap */
         }
         regs->eax = dead;
         return dead;
