@@ -358,7 +358,11 @@ int32_t syscall_wait(struct regs *regs)
         pcb_t *child = get_process_by_pid(dead);
         if (child) {
             process_cleanup_child(child);
-            child->state = 0; /* Mark slot free — prevents double-reap */
+            /* Leave state as TERMINATED — child was already removed
+             * from children list so find_terminated_child won't find
+             * it again.  State TERMINATED is skipped by the scheduler.
+             * Do NOT set state to 0 (= NEW) or the scheduler will
+             * try to first-run a process with a freed kernel stack. */
         }
         regs->eax = dead;
         return dead;

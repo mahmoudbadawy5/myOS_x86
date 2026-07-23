@@ -488,10 +488,11 @@ pcb_t *fork_process(pcb_t *parent, struct regs *regs)
 }
 
 /* Unblock the parent of `child_pid` and set its return value.
- * Does NOT free child resources or remove from children list —
- * that is done by process_cleanup_child() when the parent reaps
- * the child via wait().  Keeping the child in the children list
- * as a zombie allows a subsequent wait() to find and clean it up. */
+ * When the parent is blocked, also removes the child from the
+ * children list and frees its resources so no zombie accumulates.
+ * When the parent is NOT blocked (child exited before parent
+ * called wait), the child stays in the list as a zombie for
+ * syscall_wait's immediate-reap path to clean up. */
 void unblock_parent(uint32_t child_pid)
 {
     pcb_t *child = get_process_by_pid(child_pid);
@@ -499,8 +500,10 @@ void unblock_parent(uint32_t child_pid)
 
     pcb_t *parent = get_process_by_pid(child->parent_id);
     if (parent && parent->state == PROCESS_STATE_BLOCKED) {
+        remove_child_from_parent(parent, child_pid);
         uint32_t *tf = (uint32_t *)parent->regs.esp;
         tf[11] = child_pid; /* EAX is at offset 44 / sizeof(uint32_t) = 11 */
         parent->state = PROCESS_STATE_READY;
+        process_cleanup_child(child);
     }
 }
