@@ -24,3 +24,4 @@ void tlb_flush(void);
 int is_page_mapped(uint32_t virt_addr);
 int copy_to_user(void *dst, const void *src, uint32_t size);
 int copy_from_user(void *dst, const void *src, uint32_t size);
+void vmm_copy_user_pages(uint32_t *source_dir);

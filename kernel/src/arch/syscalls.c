@@ -125,6 +125,7 @@ int32_t (*syscalls[MAX_SYSCALLS])(struct regs *) = {
     syscall_mkdir,
     syscall_unlink,
     syscall_ps,
+    syscall_fork,
 };
 
 void init_syscalls(void)
@@ -921,4 +922,21 @@ int32_t syscall_ps(struct regs *regs)
         return -1;
 
     return (int32_t)count;
+}
+
+/*
+    fork — duplicate the current process.
+    Returns: 0 in child, child PID in parent, -1 on error.
+*/
+int32_t syscall_fork(struct regs *regs)
+{
+    (void)regs;
+    if (!current_process)
+        return -1;
+
+    pcb_t *child = fork_process(current_process, regs);
+    if (!child)
+        return -1;
+
+    return (int32_t)child->pid;
 }

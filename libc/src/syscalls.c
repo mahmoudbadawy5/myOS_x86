@@ -173,3 +173,10 @@ int sys_ps(void *buf, int max_entries)
     __asm__ __volatile__("int $0x80" : "=a"(ret) : "a"(23), "b"(buf), "c"(max_entries) : "memory", "cc");
     return ret;
 }
+
+int sys_fork(void)
+{
+    int ret;
+    __asm__ __volatile__("int $0x80" : "=a"(ret) : "a"(24) : "memory", "cc");
+    return ret;
+}

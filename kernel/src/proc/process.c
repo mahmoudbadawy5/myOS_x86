@@ -327,6 +327,107 @@ void process_cleanup_child(pcb_t *child)
     child->memory_regions = 0;
 }
 
+/* Duplicate the calling process. Returns pointer to child PCB (parent),
+ * or NULL on error. Child's saved EAX is set to 0. */
+pcb_t *fork_process(pcb_t *parent, struct regs *regs)
+{
+    if (num_processes >= MAX_PROCESSES)
+        return NULL;
+
+    /* Find free slot */
+    uint32_t slot = num_processes;
+    pcb_t *child = &process_table[slot];
+
+    /* Clone PCB fields */
+    child->pid = next_pid++;
+    child->state = PROCESS_STATE_BLOCKED;
+    child->parent_id = parent->pid;
+    child->signal_pending = 0;
+    child->num_children = 0;
+
+    /* Copy proc_name */
+    for (int i = 0; i < 19; i++)
+        child->proc_name[i] = parent->proc_name[i];
+    child->proc_name[19] = '\0';
+
+    /* Copy CWD */
+    int ci = 0;
+    while (parent->cwd[ci] && ci < 254) {
+        child->cwd[ci] = parent->cwd[ci];
+        ci++;
+    }
+    child->cwd[ci] = '\0';
+
+    /* Allocate new kernel stack */
+    uint32_t kstack_virt = (uint32_t)malloc(KERNEL_STACK_SIZE);
+    child->kernel_stack_alloc = kstack_virt;
+    child->kernel_stack_bottom = kstack_virt;
+    uint32_t kstack_base = kstack_virt + KERNEL_STACK_SIZE;
+    child->kernel_stack_top = (kstack_base - 32) & ~0xF;
+
+    /* Register child in parent's children list */
+    parent->children_id[parent->num_children] = child->pid;
+    parent->num_children++;
+
+    /* Clone page directory + deep-copy user pages.
+     * Switch to parent's page dir so we can read its pages,
+     * then switch to child's so we can write new mappings. */
+    uint32_t *saved_dir = vmm_get_directory();
+    uint32_t *parent_dir = (uint32_t *)((uint32_t)parent->regs.cr3);
+    set_page_dir(parent_dir);
+
+    uint32_t *child_dir = vmm_clone_directory();
+    set_page_dir(child_dir);
+
+    /* Copy user pages from parent into child's address space */
+    vmm_copy_user_pages(parent_dir);
+
+    set_page_dir(saved_dir);
+
+    child->regs.cr3 = (uint32_t)child_dir;
+
+    /* Clone register state */
+    child->regs = parent->regs;
+    child->regs.eax = 0; /* fork return value in child */
+
+    /* Clone VMA list (deep copy) */
+    child->memory_regions = NULL;
+    vma_t *src_vma = parent->memory_regions;
+    vma_t *dst_vma_last = NULL;
+    while (src_vma) {
+        vma_t *new_vma = malloc(sizeof(vma_t));
+        new_vma->start = src_vma->start;
+        new_vma->end = src_vma->end;
+        new_vma->flags = src_vma->flags;
+        new_vma->next = NULL;
+        if (dst_vma_last) {
+            dst_vma_last->next = new_vma;
+        } else {
+            child->memory_regions = new_vma;
+        }
+        dst_vma_last = new_vma;
+        src_vma = src_vma->next;
+    }
+
+    /* Share open files — increment refcount on each node */
+    for (int i = 0; i < MAX_FILES; i++) {
+        if (parent->files_open[i]) {
+            FILE *new_fp = malloc(sizeof(FILE));
+            new_fp->flags = parent->files_open[i]->flags;
+            new_fp->file = parent->files_open[i]->file;
+            if (new_fp->file)
+                new_fp->file->refcount++;
+            child->files_open[i] = new_fp;
+        } else {
+            child->files_open[i] = NULL;
+        }
+    }
+
+    child->state = PROCESS_STATE_READY;
+    num_processes++;
+    return child;
+}
+
 /* Unblock the parent of `child_pid` and set its return value.
  * Removes the child from the parent's children list.
  * schedule() never returns, so the return value must be written
