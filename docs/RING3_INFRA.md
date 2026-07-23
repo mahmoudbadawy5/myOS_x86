@@ -214,11 +214,12 @@ static inline int is_user_ptr(const void *p)
 ```
 
 Used in: `syscall_readdir`, `syscall_stat`, `syscall_getcwd`, `syscall_chdir`,
-`syscall_mkdir`, `syscall_unlink`, `syscall_ps`.
+`syscall_mkdir`, `syscall_unlink`, `syscall_ps`, `syscall_pipe`.
 
-**Status:** Basic validation present. Does NOT check if the pointer is actually mapped
-(would need page table walk). A user passing a valid-looking but unmapped address would
-still cause a kernel page fault.
+**Status:** Fast-path sanity check (rejects NULL and kernel-space pointers). The thorough
+page-table validation is done by `is_page_mapped()` / `copy_to_user()` / `copy_from_user()`
+which are called after the `is_user_ptr` check passes. Both layers are needed:
+`is_user_ptr` avoids expensive page table walks for obviously bad pointers.
 
 ---
 

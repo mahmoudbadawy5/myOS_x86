@@ -49,8 +49,9 @@ int sys_write_fd(int fd, const char *buf, int len)
     return ret;
 }
 
-void sys_exit(void)
+void sys_exit(int status)
 {
+    (void)status;
     __asm__ __volatile__("int $0x80" : : "a"(5) : "memory", "cc");
     for(;;);
 }
