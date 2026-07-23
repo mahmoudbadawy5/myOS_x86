@@ -27,6 +27,7 @@ int32_t (*syscalls[MAX_SYSCALLS])(struct regs *) = {
     syscall_pipe,
     syscall_kill,
     syscall_getpid,
+    syscall_lseek,
 };
 
 void init_syscalls(void)
@@ -138,9 +139,6 @@ int32_t syscall_sbrk(struct regs *regs)
     uint32_t old_brk = heap->end;
     uint32_t new_brk = old_brk + increment;
 
-    uint32_t *old_dir = vmm_get_directory();
-    set_page_dir((uint32_t*) current_process->regs.cr3);
-
     uint32_t page = ALIGN_PAGE(old_brk);
     uint32_t last_mapped = old_brk;
     while (page < new_brk) {
@@ -155,7 +153,6 @@ int32_t syscall_sbrk(struct regs *regs)
     }
 
     heap->end = last_mapped;
-    set_page_dir(old_dir);
     if (last_mapped < new_brk)
         return -1;
     return old_brk;
@@ -390,11 +387,8 @@ int32_t syscall_pipe(struct regs *regs)
     current_process->files_open[write_fd] = write_fp;
 
     /* Copy fds to user space */
-    uint32_t *old_dir = vmm_get_directory();
-    set_page_dir((uint32_t *)current_process->regs.cr3);
     fds[0] = read_fd;
     fds[1] = write_fd;
-    set_page_dir(old_dir);
 
     return 0;
 }
@@ -434,4 +428,46 @@ int32_t syscall_getpid(struct regs *regs)
     if (!current_process)
         return 0;
     return current_process->pid;
+}
+
+/*
+    lseek — reposition file offset.
+    ebx: file descriptor
+    ecx: offset
+    edx: whence (0=SEEK_SET, 1=SEEK_CUR, 2=SEEK_END)
+    Returns: new offset from start, or -1 on error.
+*/
+int32_t syscall_lseek(struct regs *regs)
+{
+    uint32_t fd = regs->ebx;
+    int32_t offset = (int32_t)regs->ecx;
+    uint32_t whence = regs->edx;
+
+    if (fd >= MAX_FILES)
+        return -1;
+    FILE *fp = current_process->files_open[fd];
+    if (!fp || !fp->file)
+        return -1;
+
+    if (whence == 0) { /* SEEK_SET */
+        if (offset < 0)
+            return -1;
+    } else if (whence == 1) { /* SEEK_CUR */
+        int32_t new_off = fp->file->seek_offset + offset;
+        if (offset > 0 && new_off < 0)
+            return -1;
+        if (offset < 0 && new_off > 0)
+            return -1;
+        if (new_off < 0)
+            return -1;
+        offset = new_off;
+        whence = 0;
+    } else if (whence == 2) { /* SEEK_END */
+        /* offset relative to end, allow negative to mean before EOF */
+    } else {
+        return -1;
+    }
+
+    seek_fs(fp->file, offset, whence);
+    return (int32_t)fp->file->seek_offset;
 }
