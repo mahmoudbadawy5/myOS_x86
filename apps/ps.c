@@ -34,11 +34,11 @@ int main(int argc, char **argv)
         /* Manually build the line */
         /* PID */
         unsigned int pid = entries[i].pid;
-        char pid_buf[8];
+        char pid_buf[11];
         int pi = 0;
         if (pid == 0) { pid_buf[pi++] = '0'; }
         else {
-            char tmp[8]; int ti = 0;
+            char tmp[10]; int ti = 0;
             while (pid) { tmp[ti++] = '0' + pid % 10; pid /= 10; }
             while (ti) { pid_buf[pi++] = tmp[--ti]; }
         }
@@ -66,11 +66,11 @@ int main(int argc, char **argv)
 
         /* Parent PID */
         unsigned int ppid = entries[i].parent_id;
-        char ppid_buf[8];
+        char ppid_buf[11];
         int ppi = 0;
         if (ppid == 0) { ppid_buf[ppi++] = '0'; }
         else {
-            char tmp[8]; int ti = 0;
+            char tmp[10]; int ti = 0;
             while (ppid) { tmp[ti++] = '0' + ppid % 10; ppid /= 10; }
             while (ti) { ppid_buf[ppi++] = tmp[--ti]; }
         }

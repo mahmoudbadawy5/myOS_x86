@@ -83,7 +83,7 @@ int main(int argc, char **argv)
     buf[pos++] = ' ';
     /* filename */
     int fnlen = 0;
-    while (argv[1][fnlen]) buf[pos++] = argv[1][fnlen++];
+    while (argv[1][fnlen] && pos < 63) buf[pos++] = argv[1][fnlen++];
     buf[pos++] = '\n';
     buf[pos] = '\0';
 

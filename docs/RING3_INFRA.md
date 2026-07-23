@@ -45,7 +45,7 @@ on interrupts/syscalls the CPU switches to the correct kernel stack.
 File: `kernel/src/proc/process_asm.asm`
 
 ### PCB field offsets (hardcoded):
-```
+```c
 PCB_OFFSET_PROCESS_STATE  = 4   (state enum)
 PCB_OFFSET_KERNEL_STACK   = 8   (kernel_stack_top — IRET frame address)
 PCB_OFFSET_REGS_ESP       = 40  (regs.esp — saved trap frame pointer)
@@ -102,7 +102,7 @@ proc->regs.ss = 0x23;         // User stack segment (ring 3)
 - State set to `PROCESS_STATE_NEW`
 
 ### IRET frame layout at `kernel_stack_top`:
-```
+```c
 frame[0] = user EIP (from ELF entry point)
 frame[1] = 0x1B (user CS)
 frame[2] = 0x202 (EFLAGS, IF=1)
@@ -136,7 +136,7 @@ idt_set_gate(0x80, (unsigned)handle_syscalls, 0x08, 0xEE);
 8. `iretd` — returns to ring 3
 
 ### Register convention (syscall args):
-```
+```c
 eax = syscall number
 ebx = arg1
 ecx = arg2
@@ -212,9 +212,6 @@ static inline int is_user_ptr(const void *p)
     return (uint32_t)p < KERNEL_VIRTUAL_BASE && p != 0;
 }
 ```
-
-Used in: `syscall_readdir`, `syscall_stat`, `syscall_getcwd`, `syscall_chdir`,
-`syscall_mkdir`, `syscall_unlink`, `syscall_ps`, `syscall_pipe`.
 
 **Status:** Fast-path sanity check (rejects NULL and kernel-space pointers). The thorough
 page-table validation is done by `is_page_mapped()` / `copy_to_user()` / `copy_from_user()`

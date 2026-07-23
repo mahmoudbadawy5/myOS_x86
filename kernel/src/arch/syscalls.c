@@ -161,6 +161,8 @@ int32_t syscall_open(struct regs *regs)
     if (copy_from_user(mode, (void *)regs->ecx, sizeof(mode)) != 0) {
         mode[0] = 'r';
         mode[1] = '\0';
+    } else {
+        mode[sizeof(mode) - 1] = '\0';
     }
 
     return fopen(path, mode);
@@ -191,6 +193,8 @@ int32_t syscall_read(struct regs *regs)
 
     /* Validate user buffer is mapped */
     uint32_t total = size * count;
+    if (count != 0 && total / count != size)
+        return -1; /* overflow */
     for (uint32_t a = (uint32_t)buf; a < (uint32_t)buf + total; a += 4096) {
         if (!is_page_mapped(a))
             return -1;
@@ -225,6 +229,8 @@ int32_t syscall_write(struct regs *regs)
 
     /* Validate user buffer is mapped */
     uint32_t total = size * count;
+    if (count != 0 && total / count != size)
+        return -1; /* overflow */
     for (uint32_t a = (uint32_t)buf; a < (uint32_t)buf + total; a += 4096) {
         if (!is_page_mapped(a))
             return -1;

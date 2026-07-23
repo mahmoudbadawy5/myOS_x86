@@ -203,7 +203,7 @@ int is_page_mapped(uint32_t virt_addr)
 
     uint32_t *table = (uint32_t *)((pd_entry & PAGE_ADDR) + KERNEL_VIRTUAL_BASE);
     uint32_t pt_entry = table[pt_index];
-    return (pt_entry & PAGE_PRESENT) != 0;
+    return (pt_entry & PAGE_PRESENT) && (pt_entry & PAGE_USER);
 }
 
 /* Copy data to user space, checking each page is mapped first.

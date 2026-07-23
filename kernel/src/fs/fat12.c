@@ -664,6 +664,29 @@ fs_node_t *fat12_create(const char *name)
     return file;
 }
 
+struct mkdir_entry_ctx {
+    const char *name;
+    uint32_t cluster;
+    bool done;
+};
+
+static void mkdir_entry_cb(fs_node_t *node, fat12_dir_entry_t *entry, void *vctx) {
+    (void)node;
+    struct mkdir_entry_ctx *c = (struct mkdir_entry_ctx *)vctx;
+    if (c->done) return;
+
+    char entry_name_8[8], entry_ext_3[3];
+    fat12_name_to_83(c->name, entry_name_8, entry_ext_3);
+
+    memset((uint8_t *)entry, 0, sizeof(fat12_dir_entry_t));
+    memcpy((uint8_t *)entry->name, (uint8_t *)entry_name_8, 8);
+    memcpy((uint8_t *)entry->ext, (uint8_t *)entry_ext_3, 3);
+    entry->attributes = 0x10;
+    entry->first_cluster = c->cluster;
+    entry->file_size = 0;
+    c->done = true;
+}
+
 int fat12_mkdir(fs_node_t *dir_node, const char *name)
 {
     if (!name || !*name)
@@ -686,6 +709,10 @@ int fat12_mkdir(fs_node_t *dir_node, const char *name)
     /* Initialize the cluster with . and .. entries */
     uint32_t bytes_per_cluster = fat12.bpb.sectors_per_cluster * fat12.bpb.bytes_per_sector;
     uint8_t *cluster_buf = malloc(bytes_per_cluster);
+    if (!cluster_buf) {
+        fat12_free_cluster_chain(cluster);
+        return -1;
+    }
     memset(cluster_buf, 0, bytes_per_cluster);
 
     fat12_dir_entry_t *entries = (fat12_dir_entry_t *)cluster_buf;
@@ -711,30 +738,7 @@ int fat12_mkdir(fs_node_t *dir_node, const char *name)
     fat12_write_cluster(cluster, cluster_buf);
     free(cluster_buf);
 
-    /* Write directory entry in parent using a dedicated callback */
-    struct mkdir_entry_ctx {
-        const char *name;
-        uint32_t cluster;
-        bool done;
-    };
-
-    void mkdir_entry_cb(fs_node_t *node, fat12_dir_entry_t *entry, void *vctx) {
-        (void)node;
-        struct mkdir_entry_ctx *c = (struct mkdir_entry_ctx *)vctx;
-        if (c->done) return;
-
-        char entry_name_8[8], entry_ext_3[3];
-        fat12_name_to_83(c->name, entry_name_8, entry_ext_3);
-
-        memset((uint8_t *)entry, 0, sizeof(fat12_dir_entry_t));
-        memcpy((uint8_t *)entry->name, (uint8_t *)entry_name_8, 8);
-        memcpy((uint8_t *)entry->ext, (uint8_t *)entry_ext_3, 3);
-        entry->attributes = 0x10;
-        entry->first_cluster = c->cluster;
-        entry->file_size = 0;
-        c->done = true;
-    }
-
+    /* Write directory entry in parent */
     struct mkdir_entry_ctx mctx;
     mctx.name = name;
     mctx.cluster = cluster;
@@ -784,6 +788,8 @@ int fat12_unlink(fs_node_t *dir_node, const char *name)
                                   / fat12.bpb.bytes_per_sector;
         uint32_t entries_per_sector = fat12.bpb.bytes_per_sector / sizeof(fat12_dir_entry_t);
         uint8_t *sector_buf = malloc(ATA_SECTOR_SIZE);
+        if (!sector_buf)
+            return -1;
 
         for (uint32_t s = 0; s < root_dir_sectors; s++) {
             uint32_t lba = fat12.root_lba + s;
@@ -810,6 +816,8 @@ int fat12_unlink(fs_node_t *dir_node, const char *name)
         free(sector_buf);
     } else {
         uint8_t *cluster_buf = malloc(bpc);
+        if (!cluster_buf)
+            return -1;
         uint32_t cl = dir_node->inode;
 
         while (cl != 0xFFFF) {

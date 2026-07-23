@@ -71,14 +71,14 @@ int main(int argc, char **argv)
 
         /* ASCII */
         print(" |");
+        char ascbuf[17];
+        int asci = 0;
         for (int i = 0; i < 16 && offset + i < total; i++) {
             char c = data[offset + i];
-            if (c >= 32 && c < 127) {
-                sys_write(&c, 1);
-            } else {
-                print(".");
-            }
+            ascbuf[asci++] = (c >= 32 && c < 127) ? c : '.';
         }
+        ascbuf[asci] = '\0';
+        print(ascbuf);
         print("|\n");
     }
 

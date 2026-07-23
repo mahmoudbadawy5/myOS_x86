@@ -62,11 +62,19 @@ int main(int argc, char **argv)
     /* Print first max_lines lines */
     int lines = 0;
     int i = 0;
+    char outbuf[256];
+    int outpos = 0;
     while (i < total && lines < max_lines) {
-        sys_write(&data[i], 1);
+        outbuf[outpos++] = data[i];
+        if (outpos >= 256 || data[i] == '\n') {
+            sys_write(outbuf, outpos);
+            outpos = 0;
+        }
         if (data[i] == '\n') lines++;
         i++;
     }
+    if (outpos > 0)
+        sys_write(outbuf, outpos);
 
     free(data);
     return 0;
