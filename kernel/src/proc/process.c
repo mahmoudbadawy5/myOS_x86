@@ -301,10 +301,18 @@ void process_cleanup_child(pcb_t *child)
     vmm_free_directory((uint32_t *)child->regs.cr3);
     set_page_dir(saved_dir);
 
-    /* Free FILE structs */
+    /* Free FILE structs — decrement refcount, close node if last reference */
     for (int i = 0; i < MAX_FILES; i++) {
         if (child->files_open[i]) {
-            free(child->files_open[i]);
+            FILE *fp = child->files_open[i];
+            fs_node_t *node = fp->file;
+            if (node && node->refcount > 0)
+                node->refcount--;
+            if (node && node->refcount == 0) {
+                close_fs(node);
+                free(node);
+            }
+            free(fp);
             child->files_open[i] = 0;
         }
     }
@@ -342,10 +350,18 @@ void unblock_parent(uint32_t child_pid)
     vmm_free_directory((uint32_t *)child->regs.cr3);
     set_page_dir(saved_dir);
 
-    /* Free FILE structs */
+    /* Free FILE structs — decrement refcount, close node if last reference */
     for (int i = 0; i < MAX_FILES; i++) {
         if (child->files_open[i]) {
-            free(child->files_open[i]);
+            FILE *fp = child->files_open[i];
+            fs_node_t *node = fp->file;
+            if (node && node->refcount > 0)
+                node->refcount--;
+            if (node && node->refcount == 0) {
+                close_fs(node);
+                free(node);
+            }
+            free(fp);
             child->files_open[i] = 0;
         }
     }

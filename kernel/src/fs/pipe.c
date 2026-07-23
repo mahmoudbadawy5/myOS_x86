@@ -2,6 +2,21 @@
 #include <mem/malloc.h>
 #include <string.h>
 
+static void pipe_close_fn(fs_node_t *node)
+{
+    pipe_buf_t *pb = (pipe_buf_t *)node->ptr;
+    if (pb) {
+        /* Mark the pointer NULL on both sides so the other side doesn't double-free.
+         * Both read_node->ptr and write_node->ptr point to the same pb. */
+        /* We can't reach the other node from here, so we use a trick:
+         * free only if refcount is 0 (we are the last holder). */
+        if (node->refcount == 0) {
+            free(pb);
+            node->ptr = 0;
+        }
+    }
+}
+
 static uint32_t pipe_read_fn(fs_node_t *node, uint32_t size, uint32_t units, uint8_t *buffer)
 {
     pipe_buf_t *pb = (pipe_buf_t *)node->ptr;
@@ -43,12 +58,16 @@ int pipe_create(FILE **read_fp, FILE **write_fp)
     read_node->flags = FS_PIPE;
     read_node->ptr = (fs_node_t *)pb;
     read_node->read = pipe_read_fn;
+    read_node->close = pipe_close_fn;
+    read_node->refcount = 1;
 
     fs_node_t *write_node = malloc(sizeof(fs_node_t));
     memset((unsigned char *)write_node, 0, sizeof(fs_node_t));
     write_node->flags = FS_PIPE;
     write_node->ptr = (fs_node_t *)pb;
     write_node->write = pipe_write_fn;
+    write_node->close = pipe_close_fn;
+    write_node->refcount = 1;
 
     *read_fp = malloc(sizeof(FILE));
     (*read_fp)->flags = FILE_READ;

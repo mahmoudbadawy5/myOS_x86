@@ -770,7 +770,13 @@ int32_t syscall_close(struct regs *regs)
         return -1;
 
     FILE *fp = current_process->files_open[fd];
-    close_fs(fp->file);
+    fs_node_t *node = fp->file;
+    if (node && node->refcount > 0)
+        node->refcount--;
+    if (node && node->refcount == 0) {
+        close_fs(node);
+        free(node);
+    }
     free(fp);
     current_process->files_open[fd] = 0;
     return 0;
