@@ -8,6 +8,8 @@ initrd_header_t *fs_initrd_header;
 initrd_directory_t *fs_initrd_root;
 uint32_t initrd_location;
 
+static fs_node_t *initrd_mnt_node;
+
 // impl is location in memory
 
 uint32_t initrd_read_fs(fs_node_t *node, uint32_t size, uint32_t units, uint8_t *buffer)
@@ -52,6 +54,10 @@ fs_node_t *initrd_finddir_fs(fs_node_t *node, char *name)
 {
     if ((node->flags & FS_DIRECTORY) != FS_DIRECTORY)
         return NULL;
+
+    if (strcmp(name, "mnt") == 0 && initrd_mnt_node)
+        return initrd_mnt_node;
+
     initrd_directory_t *dir = initrd_loaddir(node->impl);
     for (int i = 0; i < dir->num_entites; i++)
     {
@@ -111,4 +117,9 @@ void init_initrd(uint32_t initrd_start)
     fs_initrd_root = initrd_loaddir(initrd_start);
     fs_node_t *root_fs = initrd_loaddir_fs_node("/", initrd_start - initrd_location);
     init_vfs(root_fs);
+}
+
+void initrd_set_mount_point(fs_node_t *mnt)
+{
+    initrd_mnt_node = mnt;
 }

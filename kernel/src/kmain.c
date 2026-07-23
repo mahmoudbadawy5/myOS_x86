@@ -14,6 +14,8 @@
 #include <mem/virt_mem.h>
 #include <mem/malloc.h>
 #include <fs/initrd.h>
+#include <fs/fat12.h>
+#include <drivers/ata.h>
 #include <math.h>
 #include <arch/syscalls.h>
 #include <proc/process.h>
@@ -195,6 +197,62 @@ void test_files() {
     }
 }
 
+void test_fat12() {
+    printf("\n=== FAT12 Test ===\n");
+
+    fs_node_t *mnt_node = get_node("/mnt", root_dir);
+    if (!mnt_node) {
+        printf("[FAT12 TEST] FAIL: /mnt not found\n");
+        return;
+    }
+    printf("[FAT12 TEST] /mnt found, flags=0x%x\n", mnt_node->flags);
+
+    // Step 1: Read (check if test.txt already exists)
+    printf("[FAT12 TEST] Step 1: Reading /mnt/test.txt...\n");
+    fs_node_t *f = get_node("/mnt/test.txt", root_dir);
+    if (f && f->read) {
+        char buf[128];
+        uint32_t n = read_fs(f, f->size < 127 ? f->size : 127, 1, (uint8_t *)buf);
+        buf[n] = '\0';
+        printf("[FAT12 TEST]   Read %d bytes: \"%s\"\n", n, buf);
+    } else {
+        printf("[FAT12 TEST]   File not found (expected on fresh image)\n");
+    }
+
+    // Step 2: Create and write
+    printf("[FAT12 TEST] Step 2: Creating and writing /mnt/test.txt...\n");
+    fs_node_t *wf = fat12_create("test.txt");
+    if (!wf) {
+        printf("[FAT12 TEST] FAIL: Could not create test.txt\n");
+        return;
+    }
+    const char *msg = "Hello from FAT12!";
+    uint32_t written = write_fs(wf, strlen(msg), 1, (uint8_t *)msg);
+    printf("[FAT12 TEST]   Wrote %d bytes: \"%s\"\n", written, msg);
+    fat12_sync();
+
+    // Step 3: Read back what we wrote
+    printf("[FAT12 TEST] Step 3: Reading back /mnt/test.txt...\n");
+    fs_node_t *rf = get_node("/mnt/test.txt", root_dir);
+    if (!rf || !rf->read) {
+        printf("[FAT12 TEST] FAIL: Could not open test.txt for reading\n");
+        return;
+    }
+    char buf[128];
+    uint32_t n = read_fs(rf, rf->size < 127 ? rf->size : 127, 1, (uint8_t *)buf);
+    buf[n] = '\0';
+    printf("[FAT12 TEST]   Read %d bytes: \"%s\"\n", n, buf);
+
+    // Verify
+    if (n == strlen(msg) && memcmp(buf, msg, n) == 0) {
+        printf("[FAT12 TEST] PASS: Data matches!\n");
+    } else {
+        printf("[FAT12 TEST] FAIL: Data mismatch!\n");
+    }
+
+    printf("=== FAT12 Test Done ===\n\n");
+}
+
 void kmain(unsigned long magic, multiboot_info_t *mbd)
 {
     init_video();
@@ -241,6 +299,23 @@ void kmain(unsigned long magic, multiboot_info_t *mbd)
 
     init_initrd(initrd_location + KERNEL_VIRTUAL_BASE);
 
+    printf("Initializing ATA:\t\t[");
+    ata_init();
+    printf("\x1b\x02OK\x1b\x0F]\n");
+
+    printf("Initializing FAT12:\t\t[");
+    init_fat12(0);
+    fs_node_t *fat12_root = fat12_get_root();
+    if (fat12_root) {
+        fs_node_t *mnt = malloc(sizeof(fs_node_t));
+        memset((uint8_t *)mnt, 0, sizeof(fs_node_t));
+        strcpy(mnt->name, "mnt");
+        mnt->flags = FS_DIRECTORY;
+        mount_dir(mnt, fat12_root);
+        initrd_set_mount_point(mnt);
+    }
+    printf("\x1b\x02OK\x1b\x0F]\n");
+
     printf("Initializing multitasking:\t[");
     init_multitasking();
     printf("\x1b\x02OK\x1b\x0F]\n");
@@ -257,6 +332,7 @@ void kmain(unsigned long magic, multiboot_info_t *mbd)
 
     create_process("/shell.bin", 0, 0, 0);
 
+    test_fat12();
     test_files();
 
     __asm__ __volatile__("sti");

@@ -13,6 +13,9 @@ initrd: tools/create_initrd.py $(apps)
 	@cp $(apps) initrd/
 	@python tools/create_initrd.py initrd initrd.img
 
+fat12: tools/create_fat12.sh
+	@bash tools/create_fat12.sh
+
 myos.iso: kernel.bin initrd
 	@cp kernel/kernel.bin isodir/boot
 	@cp initrd.img isodir/boot
@@ -24,9 +27,10 @@ clean:
 	make -C apps clean
 	rm -f initrd/*.bin
 	rm -f myos.iso
+	rm -f fat12.img
 
-run: myos.iso
-	kvm -cdrom myos.iso
+run: myos.iso fat12
+	kvm -cdrom myos.iso -drive file=fat12.img,format=raw,if=ide,index=0,media=disk -boot d
 
-bochs: myos.iso
+bochs: myos.iso fat12
 	bochs
