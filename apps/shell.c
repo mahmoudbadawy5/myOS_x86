@@ -1,4 +1,5 @@
 #include <test.h>
+#include <syscalls.h>
 
 #define LINE_MAX 256
 #define MAX_ARGS 16
@@ -80,11 +81,38 @@ void run_command(int argc, char **args)
         print("Available commands:\n");
         print("  help    - Show this help\n");
         print("  clear   - Clear the screen\n");
+        print("  cd      - Change directory\n");
+        print("  pwd     - Print working directory\n");
+        print("  ls      - List directory\n");
+        print("  cat     - Print file contents\n");
+        print("  touch   - Create a file\n");
         print("  <prog>  - Run a program\n");
     }
     else if (strcmp(args[0], "clear") == 0)
     {
         print("\x1b\x40");
+    }
+    else if (strcmp(args[0], "cd") == 0)
+    {
+        if (argc < 2) {
+            /* cd with no args goes to / */
+            sys_chdir("/");
+        } else {
+            if (sys_chdir(args[1]) != 0) {
+                print("cd: ");
+                print(args[1]);
+                print(": no such directory\n");
+            }
+        }
+    }
+    else if (strcmp(args[0], "pwd") == 0)
+    {
+        char buf[256];
+        if (sys_getcwd(buf, sizeof(buf)) == 0)
+            print(buf);
+        else
+            print("/");
+        print("\n");
     }
     else
     {
@@ -98,9 +126,6 @@ void run_command(int argc, char **args)
         }
         cmdline[pos] = '\0';
 
-        print("Spawning: ");
-        print(args[0]);
-        print("\n");
         spawn(cmdline);
         wait();
     }

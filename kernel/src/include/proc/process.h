@@ -46,6 +46,7 @@ typedef struct pcb {
     uint32_t num_children;  /* Number of live children */
     char proc_name[20];
     uint32_t kernel_stack_alloc; /* Base of malloc'd kernel stack */
+    char cwd[256];               /* Current working directory */
 } pcb_t;
 
 void init_multitasking(void);

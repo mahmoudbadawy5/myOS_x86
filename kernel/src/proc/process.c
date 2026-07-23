@@ -134,6 +134,8 @@ void create_process(const char *app_path, uint32_t parent_pid, int argc, const c
     pcb->files_open[1]->flags = FILE_WRITE;
     for(int i=0;i<19;i++) pcb->proc_name[i] = kernel_path[i];
     pcb->proc_name[19]='\0';
+    pcb->cwd[0] = '/';
+    pcb->cwd[1] = '\0';
 
     uint32_t kstack_virt = (uint32_t) malloc(KERNEL_STACK_SIZE);
     pcb->kernel_stack_alloc = kstack_virt;

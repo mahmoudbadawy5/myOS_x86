@@ -28,6 +28,10 @@ int32_t (*syscalls[MAX_SYSCALLS])(struct regs *) = {
     syscall_kill,
     syscall_getpid,
     syscall_lseek,
+    syscall_readdir,
+    syscall_stat,
+    syscall_getcwd,
+    syscall_chdir,
 };
 
 void init_syscalls(void)
@@ -470,4 +474,149 @@ int32_t syscall_lseek(struct regs *regs)
 
     seek_fs(fp->file, offset, whence);
     return (int32_t)fp->file->seek_offset;
+}
+
+/*
+    readdir — list directory entries.
+    ebx: path string (user space)
+    ecx: pointer to user buffer (char names[][256])
+    edx: max entries
+    Returns: number of entries, or -1 on error.
+*/
+int32_t syscall_readdir(struct regs *regs)
+{
+    char *path_user = (char *)regs->ebx;
+    char *buf_user = (char *)regs->ecx;
+    uint32_t max_entries = regs->edx;
+
+    if (!path_user || !buf_user || max_entries == 0)
+        return -1;
+
+    /* Copy path to kernel */
+    char path[256];
+    int len = 0;
+    while (path_user[len] && len < 255) {
+        path[len] = path_user[len];
+        len++;
+    }
+    path[len] = '\0';
+
+    fs_node_t *node = get_node(path, root_dir);
+    if (!node)
+        return -1;
+
+    dirent_t *dire = readdir_fs(node);
+    if (!dire)
+        return -1;
+
+    uint32_t count = dire->file_count;
+    if (count > max_entries)
+        count = max_entries;
+
+    for (uint32_t i = 0; i < count; i++) {
+        int nlen = 0;
+        while (dire->files[i][nlen] && nlen < 254)
+            nlen++;
+        /* Copy name to user buffer: each entry is 256 bytes */
+        char *dst = buf_user + i * 256;
+        for (int j = 0; j <= nlen; j++)
+            dst[j] = dire->files[i][j];
+        free(dire->files[i]);
+    }
+    free(dire->files);
+    free(dire);
+
+    return (int32_t)count;
+}
+
+/*
+    stat — get file info.
+    ebx: path string (user space)
+    ecx: pointer to stat_result in user space: { uint32_t size, uint32_t type }
+    Returns: 0 on success, -1 on error.
+*/
+int32_t syscall_stat(struct regs *regs)
+{
+    char *path_user = (char *)regs->ebx;
+    uint32_t *stat_buf = (uint32_t *)regs->ecx;
+
+    if (!path_user || !stat_buf)
+        return -1;
+
+    char path[256];
+    int len = 0;
+    while (path_user[len] && len < 255) {
+        path[len] = path_user[len];
+        len++;
+    }
+    path[len] = '\0';
+
+    fs_node_t *node = get_node(path, root_dir);
+    if (!node)
+        return -1;
+
+    stat_buf[0] = node->size;
+    stat_buf[1] = (node->flags & FS_DIRECTORY) ? 1 : 0;
+
+    return 0;
+}
+
+/*
+    getcwd — get current working directory.
+    ebx: buffer pointer (user space)
+    ecx: buffer size
+    Returns: 0 on success, -1 on error.
+*/
+int32_t syscall_getcwd(struct regs *regs)
+{
+    char *buf_user = (char *)regs->ebx;
+    uint32_t buf_size = regs->ecx;
+
+    if (!buf_user || buf_size == 0)
+        return -1;
+
+    char *cwd = current_process->cwd;
+    int len = 0;
+    while (cwd[len] && len < (int)buf_size - 1)
+        len++;
+    for (int i = 0; i <= len; i++)
+        buf_user[i] = cwd[i];
+
+    return 0;
+}
+
+/*
+    chdir — change current working directory.
+    ebx: path string (user space)
+    Returns: 0 on success, -1 on error.
+*/
+int32_t syscall_chdir(struct regs *regs)
+{
+    char *path_user = (char *)regs->ebx;
+    if (!path_user)
+        return -1;
+
+    char path[256];
+    int len = 0;
+    while (path_user[len] && len < 255) {
+        path[len] = path_user[len];
+        len++;
+    }
+    path[len] = '\0';
+
+    fs_node_t *node = get_node(path, root_dir);
+    if (!node)
+        return -1;
+    if (!(node->flags & FS_DIRECTORY))
+        return -1;
+
+    /* Copy path to cwd */
+    int i = 0;
+    while (path[i] && i < 254) {
+        current_process->cwd[i] = path[i];
+        i++;
+    }
+    current_process->cwd[i] = '\0';
+
+    return 0;
 }
