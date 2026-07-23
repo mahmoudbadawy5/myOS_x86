@@ -2,6 +2,10 @@
 #include <string.h>
 #include <mem/malloc.h>
 
+fs_node_t *root_dir;
+fs_node_t *stdin_node;
+fs_node_t *stdout_node;
+
 // Most of the code is copied from: http://www.jamesmolloy.co.uk/tutorial_html/8.-The%20VFS%20and%20the%20initrd.html
 
 uint32_t read_fs(fs_node_t *node, uint32_t size, uint32_t units, uint8_t *buffer)

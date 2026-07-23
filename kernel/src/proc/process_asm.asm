@@ -3,6 +3,7 @@
 
 PCB_OFFSET_PROCESS_STATE    equ 4
 PCB_OFFSET_KERNEL_STACK     equ 8
+PCB_OFFSET_REGS_ESP         equ 40
 PCB_OFFSET_CR3              equ 52
 
 
@@ -27,9 +28,12 @@ switch_to_process:
     cmp dword [ecx + PCB_OFFSET_PROCESS_STATE], PROCESS_STATE_NEW
     jz .load_next                  ; First run, nothing to save
     
-    ; Save current ESP (which points to interrupt frame on kernel stack)
-    mov [ecx + PCB_OFFSET_KERNEL_STACK], edx
-    ; Note: first_run is already 0 (that's why we're here), so no need to set it
+    ; Save current ESP (trap frame pointer) into regs.esp
+    ; NOTE: kernel_stack_top is NEVER modified — it always holds the
+    ; original IRET frame address for TSS.ESP0.  Using it as a
+    ; "saved context" caused a progressive 76-byte stack overflow
+    ; on every timer interrupt.
+    mov [ecx + PCB_OFFSET_REGS_ESP], edx
     
 .load_next:
     ; Update current_process pointer
@@ -45,8 +49,8 @@ switch_to_process:
     jz .first_run
     
     ; NOT first run - restore interrupt frame and return to process
-    ; Load saved kernel stack pointer
-    mov esp, [eax + PCB_OFFSET_KERNEL_STACK]
+    ; Load saved trap frame pointer from regs.esp (NOT kernel_stack_top)
+    mov esp, [eax + PCB_OFFSET_REGS_ESP]
     
     ; Stack currently has the saved interrupt frame:
     ; [esp+0]  = GS

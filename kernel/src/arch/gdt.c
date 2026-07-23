@@ -1,6 +1,9 @@
 #include <gdt.h>
 #include <types.h>
 
+struct gdt_entry gdt[6];
+struct gdt_ptr gp;
+
 void gdt_set_tss(int num, uint32_t base, uint32_t limit)
 {
     gdt[num].base_low = (base & 0xFFFF);

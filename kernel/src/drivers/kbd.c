@@ -5,6 +5,7 @@
 #include <mem/malloc.h>
 #include <stdio.h>
 #include <fs/vfs.h>
+#include <proc/process.h>
 
 /* KBDUS means US Keyboard Layout. This is a scancode table
  *  used to layout a standard US keyboard. I have left some
@@ -89,77 +90,61 @@ unsigned char kbdus[2][128] = {
         0, /* All other keys are undefined */
     }};
 
-int shift = 0, caps_lock = 0;
+volatile int shift = 0, caps_lock = 0, ctrl = 0;
 char *kbd_buf;
-uint32_t buf_start=0, buf_size=0;
+volatile uint32_t buf_start=0, buf_size=0;
 
 /* Handles the keyboard interrupt */
 void keyboard_handler(struct regs *r)
 {
     unsigned char scancode;
 
-    /* Read from the keyboard's data buffer */
     scancode = inportb(0x60);
 
-    /* If the top bit of the byte we read from the keyboard is
-     *  set, that means that a key has just been released */
     if (scancode & 0x80)
     {
-        /* You can use this one to see if the user released the
-         *  shift, alt, or control keys... */
+        /* Key release */
         if (scancode == 0xAA || scancode == 0xB6)
-        {
             shift = 0;
-        }
+        else if (scancode == 0x9D)
+            ctrl = 0;
     }
     else
     {
         if (scancode == 0x2A || scancode == 0x36)
-        {
             shift = 1;
-        }
+        if (scancode == 0x1D)
+            ctrl = 1;
         if (scancode == 0x3A)
-        {
             caps_lock = !caps_lock;
-        }
-        /* Here, a key was just pressed. Please note that if you
-         *  hold a key down, you will get repeated key press
-         *  interrupts. */
 
-        /* Just to show you how this works, we simply translate
-         *  the keyboard scancode into an ASCII value, and then
-         *  display it to the screen. You can get creative and
-         *  use some flags to see if a shift is pressed and use a
-         *  different layout, or you can add another 128 entries
-         *  to the above layout to correspond to 'shift' being
-         *  held. If shift is held using the larger lookup table,
-         *  you would add 128 to the scancode when you look for it */
+        /* Ctrl+C: send SIGINT (signal 2) to current process */
+        if (ctrl && scancode == 0x2E)
+        {
+            if (current_process) {
+                current_process->signal_pending = 2;
+                printf("Sending signal to process %08ux %s", current_process->pid, current_process->proc_name);
+                outportb(0x20, 0x20); /* EOI before schedule (which never returns) */
+                schedule(r);
+            }
+            return;
+        }
+
         char ret = kbdus[shift][scancode];
+        if (!ret)
+            return;
         if ('a' <= ret && ret <= 'z')
         {
-            /*puts("Character: ");
-            putch(ret);
-            puts(", capslock: ");
-            putch(caps_lock + '0');
-            puts("Shift ");
-            putch(shift + '0');
-            putch('\n');*/
             if (caps_lock)
                 ret = ret - 'a' + 'A';
         }
         else if ('A' <= ret && ret <= 'Z')
         {
-            /*puts("Character: ");
-            putch(ret);
-            puts(", capslock: ");
-            putch(caps_lock + '0');
-            puts("Shift ");
-            putch(shift + '0');
-            putch('\n');*/
             if (caps_lock)
                 ret = ret - 'A' + 'a';
         }
-        // putch(ret);
+        if (buf_size >= KBD_BUFFER_SZ)
+            return;
         kbd_buf[(buf_start + buf_size) & (KBD_BUFFER_SZ - 1)] = ret;
         buf_size++;
     }
@@ -172,7 +157,7 @@ uint32_t keyboard_read_fs(fs_node_t *node, uint32_t size, uint32_t units, uint8_
     {
         if(!buf_size) break;
         buffer[i] = kbd_buf[buf_start];
-        buf_start = (buf_size + 1)&(KBD_BUFFER_SZ - 1);
+        buf_start = (buf_start + 1)&(KBD_BUFFER_SZ - 1);
         buf_size--; total_read++;
     }
     node->seek_offset += total_read;
@@ -182,6 +167,13 @@ uint32_t keyboard_read_fs(fs_node_t *node, uint32_t size, uint32_t units, uint8_
 
 void keyboard_install()
 {
+    /* Flush any stale data from the PS/2 output buffer */
+    while (inportb(0x64) & 1)
+        inportb(0x60);
+
+    /* Enable keyboard scanning on the PS/2 controller */
+    outportb(0x64, 0xAE);
+
     kbd_buf = (char *)malloc(KBD_BUFFER_SZ);
     buf_start = 0;
     buf_size = 0;

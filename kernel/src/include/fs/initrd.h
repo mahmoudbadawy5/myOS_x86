@@ -22,6 +22,8 @@ typedef struct initrd_directory
 
 } __attribute__((packed)) initrd_directory_t;
 
+extern uint32_t initrd_location;
+
 void init_initrd(uint32_t initrd_start);
 uint32_t initrd_read_fs(fs_node_t *node, uint32_t size, uint32_t units, uint8_t *buffer);
 void initrd_seek_fs(fs_node_t *node, uint32_t offset, uint8_t type);

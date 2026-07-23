@@ -69,8 +69,8 @@ int load_elf(pcb_t* proc, const char* path) {
 	Elf32_Ehdr *hdr = malloc(sizeof(Elf32_Ehdr));
 	seek_fs(app_node, 0, SEEK_START);
     read_fs(app_node, sizeof(Elf32_Ehdr), 1, (uint8_t*)hdr);
-	if(!elf_check_file(hdr)) return -2;
-	if(!elf_check_supported(hdr)) return -3;
+	if(!elf_check_file(hdr)) { free(hdr); return -2; }
+	if(!elf_check_supported(hdr)) { free(hdr); return -3; }
 
 	uint32_t max_proc_end = 0;
 
@@ -94,6 +94,7 @@ int load_elf(pcb_t* proc, const char* path) {
                 memset((void*)(phdr->p_vaddr + phdr->p_filesz), 0, phdr->p_memsz - phdr->p_filesz);
             }
 		}
+		free(phdr);
 	}
 
 	uint32_t stack_size = USER_STACK_PAGES * BLOCK_SIZE;
@@ -113,5 +114,6 @@ int load_elf(pcb_t* proc, const char* path) {
 	frame[2] = 0x202;
 	frame[3] = USER_STACK_TOP - 16;
 	frame[4] = 0x23;
+	free(hdr);
 	return 0;
 }

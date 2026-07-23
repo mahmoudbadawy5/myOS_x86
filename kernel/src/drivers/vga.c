@@ -7,8 +7,8 @@
 #include <stdio.h>
 
 uint16_t *vgamem;
-int attrib = 0x0F;
-int csr_x = 0, csr_y = 0, col_next = 0;
+volatile int attrib = 0x0F;
+volatile int csr_x = 0, csr_y = 0, col_next = 0;
 
 void scroll(void)
 {
@@ -17,6 +17,8 @@ void scroll(void)
     if (csr_y >= 25)
     {
         uint32_t scroll_by = csr_y - 25 + 1;
+        if (scroll_by > 25)
+            scroll_by = 25;
         memcpy((uint8_t *)vgamem, (uint8_t *)(vgamem + 80 * (scroll_by)), (25 - scroll_by) * 80 * 2);
         memsetw(vgamem + 80 * (25 - scroll_by), blank, 80);
         csr_y = 25 - 1;
@@ -92,7 +94,7 @@ void putch(char c)
         *where = (c | (attrib << 8)); /* Character AND attributes: color */
         csr_x++;
     }
-    if (csr_x == 80)
+    if (csr_x >= 80)
     {
         csr_x = 0;
         csr_y++;
@@ -111,6 +113,7 @@ void puts(char *str)
 uint32_t vga_write_fs(fs_node_t *node, uint32_t size, uint32_t units, uint8_t *buffer)
 {
     uint32_t ret = 0;
+    col_next = 0;
     for (int i = 0; i < units; i++)
     {
         for (int j = 0; j < size; j++)

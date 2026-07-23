@@ -22,7 +22,7 @@
 extern unsigned int code, end;
 unsigned int kstart = (unsigned int)&code - KERNEL_VIRTUAL_BASE;
 unsigned int kend = (unsigned int)&end - KERNEL_VIRTUAL_BASE;
-uint32_t initrd_location, initrd_end;
+uint32_t initrd_end;
 
 void print_mmap(multiboot_info_t *mbd)
 {
@@ -152,10 +152,10 @@ void init_memory_regions(unsigned long magic, multiboot_info_t *mbd)
     }
 
     deinitialize_memory_region(0, kend + MAX_BLOCK_ENTRIES * 4); // reserve first 1M for grub/bios + Reserve kernel space + (old page tables)
+    deinitialize_memory_region(0xB8000, 0x1000); // reserve VGA text buffer so heap allocator never maps it
 }
 
 void test_files() {
-        char *file_content = malloc(1024);
     fs_node_t *file = get_node("/test_folder/test.txt", root_dir);
     if (!file)
     {
@@ -167,9 +167,11 @@ void test_files() {
     }
     else
     {
+        char *file_content = malloc(file->size + 1);
         read_fs(file, file->size, 1, (uint8_t *)file_content);
         file_content[file->size] = '\0';
         printf("%s\n", file_content);
+        free(file_content);
     }
 
     printf("\n\n\n");
@@ -185,11 +187,12 @@ void test_files() {
     }
     else
     {
-        read_fs(file2, file2->size, 1, (uint8_t *)file_content);
-        file_content[file2->size] = '\0';
-        printf("%s\n", file_content);
+        char *file_content2 = malloc(file2->size + 1);
+        read_fs(file2, file2->size, 1, (uint8_t *)file_content2);
+        file_content2[file2->size] = '\0';
+        printf("%s\n", file_content2);
+        free(file_content2);
     }
-
 }
 
 void kmain(unsigned long magic, multiboot_info_t *mbd)
@@ -250,13 +253,13 @@ void kmain(unsigned long magic, multiboot_info_t *mbd)
     // create_process("/inf1.bin");
     // create_process("/inf2.bin");
     // create_process("/test1.bin");
+    // create_process("/test_mem.bin");
 
-    create_process("/test_mem.bin");
-    create_process("/echo.bin");
-    
-    __asm__ __volatile__("sti");
+    create_process("/shell.bin", 0);
 
     test_files();
+
+    __asm__ __volatile__("sti");
 
     for (;;)
         ;

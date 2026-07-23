@@ -91,9 +91,15 @@ void fault_handler(struct regs *r)
         unsigned int cpl = r->cs & 3;
         printf("\\n--- Exception dump ---");
         printf("Exception: %s (int_no=%d)\\n", exception_messages[r->int_no], r->int_no);
+        if (r->int_no == 14) {
+            unsigned int cr2;
+            __asm__ __volatile__("mov %%cr2, %0" : "=r"(cr2));
+            printf("CR2=0x%08ux  err_code=0x%08ux\\n", cr2, r->err_code);
+        } else {
+            printf("err_code=0x%08ux\\n", r->err_code);
+        }
         printf("EIP=0x%08ux  CS=0x%04ux (CPL=%d)  SS=0x%04ux\\n", r->eip, r->cs & 0xFFFF, cpl, r->ss & 0xFFFF);
         printf("ESP=0x%08ux  EFLAGS=0x%08ux\\n", r->useresp, r->eflags);
-        printf("err_code=0x%08ux\\n", r->err_code);
         printf("EAX=0x%08ux EBX=0x%08ux ECX=0x%08ux EDX=0x%08ux\\n", r->eax, r->ebx, r->ecx, r->edx);
         printf("ESI=0x%08ux EDI=0x%08ux EBP=0x%08ux\\n", r->esi, r->edi, r->ebp);
         printf("-----------------------\\n");

@@ -30,7 +30,7 @@ void malloc_split(malloc_header_t *node, int req_size)
 {
     if (req_size + sizeof(malloc_header_t) >= node->size)
         return; // No need to split or failed
-    malloc_header_t *new_node = (malloc_header_t *)((void *)node + req_size + sizeof(malloc_header_t));
+    malloc_header_t *new_node = (malloc_header_t *)((uint8_t *)node + req_size + sizeof(malloc_header_t));
     new_node->next = node->next;
     new_node->free = node->free;
     new_node->size = node->size - req_size - sizeof(malloc_header_t);
@@ -38,8 +38,21 @@ void malloc_split(malloc_header_t *node, int req_size)
     node->next = new_node;
 }
 
+static inline uint32_t irq_save(void)
+{
+    uint32_t flags;
+    __asm__ __volatile__("pushfl; pop %0; cli" : "=r"(flags) :: "memory", "cc");
+    return flags;
+}
+
+static inline void irq_restore(uint32_t flags)
+{
+    __asm__ __volatile__("push %0; popfl" :: "r"(flags) : "memory", "cc");
+}
+
 void *malloc(uint32_t size)
 {
+    uint32_t flags = irq_save();
     malloc_header_t *cur = malloc_head;
     while ((cur->size < size || cur->free == false) && cur->next)
     {
@@ -49,7 +62,8 @@ void *malloc(uint32_t size)
     {
         malloc_split(cur, size);
         cur->free = false;
-        return (void *)cur + sizeof(malloc_header_t);
+        irq_restore(flags);
+        return (uint8_t *)cur + sizeof(malloc_header_t);
     }
     else // Need to extend more :'(
     {
@@ -62,7 +76,7 @@ void *malloc(uint32_t size)
                 uint32_t *phys_address = alloc_blocks(1);
                 map_address((void *)malloc_virt_address + i * BLOCK_SIZE, (void *)phys_address);
             }
-            malloc_header_t *new_node = (malloc_header_t *)((void *)malloc_virt_address + malloc_reserved_blocks * BLOCK_SIZE);
+            malloc_header_t *new_node = (malloc_header_t *)((uint8_t *)malloc_virt_address + malloc_reserved_blocks * BLOCK_SIZE);
             new_node->size = needed_blocks * BLOCK_SIZE - sizeof(malloc_header_t);
             new_node->free = true;
             new_node->next = NULL;
@@ -73,7 +87,7 @@ void *malloc(uint32_t size)
         else
         {
             // Extend current block
-            int needed_blocks = (size - cur->free + BLOCK_SIZE - 1) / BLOCK_SIZE;
+            int needed_blocks = (size - cur->size + BLOCK_SIZE - 1) / BLOCK_SIZE;
             for (int i = malloc_reserved_blocks; i < malloc_reserved_blocks + needed_blocks; i++)
             {
                 uint32_t *phys_address = alloc_blocks(1);
@@ -84,17 +98,19 @@ void *malloc(uint32_t size)
         }
         malloc_split(cur, size);
         cur->free = false;
-        return (void *)cur + sizeof(malloc_header_t);
+        irq_restore(flags);
+        return (uint8_t *)cur + sizeof(malloc_header_t);
     }
 }
 
 void free(void *address) // Needs a valid address that was created by malloc
 {
+    uint32_t flags = irq_save();
     malloc_header_t *cur = malloc_head;
     malloc_header_t *prev = NULL;
     while (cur)
     {
-        if ((void *)cur + sizeof(malloc_header_t) == address)
+        if ((uint8_t *)cur + sizeof(malloc_header_t) == address)
         {
             cur->free = true;
             if (prev && prev->free) // Merge with prev
@@ -108,9 +124,11 @@ void free(void *address) // Needs a valid address that was created by malloc
                 cur->size += cur->next->size + sizeof(malloc_header_t);
                 cur->next = cur->next->next;
             }
+            irq_restore(flags);
             return;
         }
         prev = cur;
         cur = cur->next;
     }
+    irq_restore(flags);
 }

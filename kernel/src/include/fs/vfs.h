@@ -48,9 +48,9 @@ typedef struct dirent
     uint32_t file_count;
 } dirent_t;
 
-fs_node_t *root_dir;
-fs_node_t *stdin_node;
-fs_node_t *stdout_node;
+extern fs_node_t *root_dir;
+extern fs_node_t *stdin_node;
+extern fs_node_t *stdout_node;
 
 
 void init_vfs(fs_node_t *root);

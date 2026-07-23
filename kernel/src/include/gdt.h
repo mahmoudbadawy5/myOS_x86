@@ -25,8 +25,8 @@ struct gdt_ptr
 } __attribute__((packed));
 
 /* Our GDT: null, kernel code, kernel data, user code (0x1B), user data (0x23), TSS (0x28) */
-struct gdt_entry gdt[6];
-struct gdt_ptr gp;
+extern struct gdt_entry gdt[6];
+extern struct gdt_ptr gp;
 
 void gdt_set_tss(int num, uint32_t base, uint32_t limit);
 

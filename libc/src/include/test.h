@@ -6,3 +6,5 @@ unsigned int print(const char *msg);
 unsigned int read(char* buf, int len);
 unsigned int exit();
 unsigned int sbrk(unsigned int increament);
+unsigned int spawn(const char *path);
+unsigned int wait();
