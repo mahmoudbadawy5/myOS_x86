@@ -2,6 +2,7 @@ print("#include <isr.h>")
 print("#include <idt.h>")
 print("#include <stdio.h>")
 print("#include <mem/virt_mem.h>")
+print("#include <proc/process.h>")
 print("""
 /* These are function prototypes for all of the exception
 *  handlers: The first 32 entries in the IDT are reserved
@@ -89,6 +90,35 @@ void fault_handler(struct regs *r)
     if (r->int_no < 32)
     {
         unsigned int cpl = r->cs & 3;
+
+        /* Kernel stack growth: if page fault is not-present and CR2
+         * is just below a process's kernel stack bottom, map a new
+         * page there and let the instruction retry. */
+        if (r->int_no == 14 && (r->err_code & 1) == 0) {
+            unsigned int cr2;
+            __asm__ __volatile__("mov %%cr2, %0" : "=r"(cr2));
+            uint32_t page_addr = cr2 & 0xFFFFF000;
+
+            for (int i = 0; i < MAX_PROCESSES; i++) {
+                pcb_t *p = &process_table[i];
+                if (p->state == PROCESS_STATE_TERMINATED)
+                    continue;
+                if (p->kernel_stack_bottom == 0)
+                    continue;
+                /* CR2 must be one page below the current stack bottom */
+                if (cr2 >= p->kernel_stack_bottom - 4096 &&
+                    cr2 <  p->kernel_stack_bottom) {
+                    uint32_t *page = get_page(page_addr, 0);
+                    if (!(*page & PAGE_PRESENT)) {
+                        allocate_page(page);
+                        p->kernel_stack_bottom = page_addr;
+                        tlb_flush();
+                        return;
+                    }
+                }
+            }
+        }
+
         printf("\\n--- Exception dump ---");
         printf("Exception: %s (int_no=%d)\\n", exception_messages[r->int_no], r->int_no);
         if (r->int_no == 14) {
