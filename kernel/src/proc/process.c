@@ -12,7 +12,7 @@
 #include <isr.h>
 #include <tss.h>
 
-static pcb_t process_table[MAX_PROCESSES];
+pcb_t process_table[MAX_PROCESSES];
 static uint32_t next_pid = 1;
 static uint32_t num_processes = 0, cur_proccess_id = -1;
 
@@ -139,6 +139,11 @@ void create_process(const char *app_path, uint32_t parent_pid, int argc, const c
 
     uint32_t kstack_virt = (uint32_t) malloc(KERNEL_STACK_SIZE);
     pcb->kernel_stack_alloc = kstack_virt;
+
+    /* Unmap all but the top page — stack grows on demand via page fault */
+    for (uint32_t a = kstack_virt; a < kstack_virt + KERNEL_STACK_SIZE - 4096; a += 4096) {
+        unmap_address((void *)a);
+    }
 
     uint32_t kstack_base = kstack_virt + KERNEL_STACK_SIZE;
     uint32_t iret_frame = (kstack_base - 32) & ~0xF;

@@ -2,6 +2,7 @@ print("#include <isr.h>")
 print("#include <idt.h>")
 print("#include <stdio.h>")
 print("#include <mem/virt_mem.h>")
+print("#include <proc/process.h>")
 print("""
 /* These are function prototypes for all of the exception
 *  handlers: The first 32 entries in the IDT are reserved
@@ -78,17 +79,43 @@ char *exception_messages[] =
 
 print("""
 /* All of our Exception handling Interrupt Service Routines will
-*  point to this function. This will tell us what exception has
-*  happened! Right now, we simply halt the system by hitting an
-*  endless loop. All ISRs disable interrupts while they are being
-*  serviced as a 'locking' mechanism to prevent an IRQ from
-*  happening and messing up kernel data structures */
+ *  point to this function. This will tell us what exception has
+ *  happened! Right now, we simply halt the system by hitting an
+ *  endless loop. All ISRs disable interrupts while they are being
+ *  serviced as a 'locking' mechanism to prevent an IRQ from
+ *  happening and messing up kernel data structures */
 void fault_handler(struct regs *r)
 {
     switch_to_kernel_page_dir();
     if (r->int_no < 32)
     {
         unsigned int cpl = r->cs & 3;
+
+        /* Kernel stack growth on page fault */
+        if (r->int_no == 14 && (r->err_code & 1) == 0) {
+            unsigned int cr2;
+            __asm__ __volatile__("mov %%cr2, %0" : "=r"(cr2));
+
+            /* Check every process to see if CR2 falls in its kernel stack */
+            for (int i = 0; i < MAX_PROCESSES; i++) {
+                pcb_t *p = &process_table[i];
+                if (p->state == PROCESS_STATE_TERMINATED)
+                    continue;
+                uint32_t base = p->kernel_stack_alloc;
+                uint32_t top  = base + KERNEL_STACK_SIZE;
+                if (cr2 >= base && cr2 < top) {
+                    /* Map a new page at the faulting address */
+                    uint32_t page_addr = cr2 & 0xFFFFF000;
+                    uint32_t *page = get_page(page_addr, 0);
+                    if (!(*page & PAGE_PRESENT)) {
+                        allocate_page(page);
+                        tlb_flush();
+                        return; /* Retry the faulting instruction */
+                    }
+                }
+            }
+        }
+
         printf("\\n--- Exception dump ---");
         printf("Exception: %s (int_no=%d)\\n", exception_messages[r->int_no], r->int_no);
         if (r->int_no == 14) {

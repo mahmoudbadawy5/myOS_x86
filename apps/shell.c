@@ -105,15 +105,6 @@ void run_command(int argc, char **args)
             }
         }
     }
-    else if (strcmp(args[0], "pwd") == 0)
-    {
-        char buf[256];
-        if (sys_getcwd(buf, sizeof(buf)) == 0)
-            print(buf);
-        else
-            print("/");
-        print("\n");
-    }
     else
     {
         /* Reconstruct full command line from args (parse_args nulled the spaces) */

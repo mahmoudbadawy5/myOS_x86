@@ -20,3 +20,4 @@ uint32_t *vmm_get_directory(void);
 uint32_t *vmm_clone_directory(void);
 void vmm_free_directory(uint32_t *page_dir);
 void switch_to_kernel_page_dir(void);
+void tlb_flush(void);

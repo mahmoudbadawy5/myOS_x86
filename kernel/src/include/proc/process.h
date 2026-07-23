@@ -8,7 +8,7 @@
 #define USER_CODE_BASE  0x08048000
 #define USER_STACK_TOP  0xA0000000
 #define USER_STACK_PAGES 4
-#define KERNEL_STACK_SIZE (2 * 4096)
+#define KERNEL_STACK_SIZE (16 * 4096)
 
 typedef enum {
     PROCESS_STATE_NEW,
@@ -63,3 +63,4 @@ void kill_children_of(uint32_t parent_pid);
 void process_cleanup_child(pcb_t *child);
 
 extern pcb_t *current_process;
+extern pcb_t process_table[];

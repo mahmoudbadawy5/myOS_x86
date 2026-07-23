@@ -489,8 +489,10 @@ int32_t syscall_readdir(struct regs *regs)
     char *buf_user = (char *)regs->ecx;
     uint32_t max_entries = regs->edx;
 
+    printf("path_user = %s, buf_user = %s, max_entries = %d\n", path_user, buf_user, max_entries);
+
     if (!path_user || !buf_user || max_entries == 0)
-        return -1;
+        return -55;
 
     /* Copy path to kernel */
     char path[256];
@@ -503,11 +505,11 @@ int32_t syscall_readdir(struct regs *regs)
 
     fs_node_t *node = get_node(path, root_dir);
     if (!node)
-        return -1;
+        return -2;
 
     dirent_t *dire = readdir_fs(node);
     if (!dire)
-        return -1;
+        return -3;
 
     uint32_t count = dire->file_count;
     if (count > max_entries)
