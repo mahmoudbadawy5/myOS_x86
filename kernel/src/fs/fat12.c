@@ -720,6 +720,7 @@ void init_fat12(uint32_t lba_offset)
     fat12_root.inode = FAT12_ROOT_INODE;
     fat12_root.readdir = fat12_readdir_fs;
     fat12_root.finddir = fat12_finddir_fs;
+    fat12_root.create = fat12_create_file;
 
     free(sector);
 }

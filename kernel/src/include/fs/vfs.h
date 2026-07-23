@@ -23,6 +23,7 @@ typedef void (*open_type_t)(struct fs_node *);                                  
 typedef void (*close_type_t)(struct fs_node *);                                    // File
 typedef struct dirent *(*readdir_type_t)(struct fs_node *);                        // Dir,  List dir (Gets names of files)
 typedef struct fs_node *(*finddir_type_t)(struct fs_node *, char *name);           //
+typedef struct fs_node *(*create_type_t)(struct fs_node *, const char *name);      // Dir, name
 
 typedef struct mount_entry
 {
@@ -47,6 +48,7 @@ typedef struct fs_node
     close_type_t close;
     readdir_type_t readdir;
     finddir_type_t finddir;
+    create_type_t create;
     mount_entry_t *mounts;
 } fs_node_t;
 
@@ -70,4 +72,5 @@ void close_fs(fs_node_t *node);
 struct dirent *readdir_fs(fs_node_t *node);
 fs_node_t *finddir_fs(fs_node_t *node, char *name);
 fs_node_t *get_node(char *path, fs_node_t *root);
+fs_node_t *create_node(char *path, fs_node_t *root);
 void mount_dir(fs_node_t *mnt, fs_node_t *fs_root);

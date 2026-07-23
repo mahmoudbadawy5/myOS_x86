@@ -593,7 +593,6 @@ int32_t syscall_readdir(struct regs *regs)
         char *dst = buf_user + i * 256;
         for (int j = 0; j <= nlen; j++)
             dst[j] = dire->files[i][j];
-        free(dire->files[i]);
     }
     free(dire->files);
     free(dire);

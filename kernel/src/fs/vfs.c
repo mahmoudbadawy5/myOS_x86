@@ -102,6 +102,45 @@ fs_node_t *get_node(char *path, fs_node_t *root)
     return NULL;
 }
 
+fs_node_t *create_node(char *path, fs_node_t *root)
+{
+    if (!root)
+        return NULL;
+    // Find the last component (filename)
+    int last_slash = -1;
+    int len = 0;
+    while (path[len])
+    {
+        if (path[len] == '/')
+            last_slash = len;
+        len++;
+    }
+    // parent_path is everything up to last_slash, filename is after
+    char *filename = path + last_slash + 1;
+    if (last_slash <= 0)
+    {
+        // Creating in root
+        if ((root->flags & FS_MOUNTPOINT) == FS_MOUNTPOINT)
+            root = root->ptr;
+        if (root->create)
+            return root->create(root, filename);
+        return NULL;
+    }
+    // Get parent directory
+    char *parent_path = malloc(last_slash + 1);
+    memcpy((uint8_t *)parent_path, (uint8_t *)path, last_slash);
+    parent_path[last_slash] = '\0';
+    fs_node_t *parent = get_node(parent_path, root);
+    free(parent_path);
+    if (!parent)
+        return NULL;
+    if ((parent->flags & FS_MOUNTPOINT) == FS_MOUNTPOINT)
+        parent = parent->ptr;
+    if (parent->create)
+        return parent->create(parent, filename);
+    return NULL;
+}
+
 void mount_dir(fs_node_t *mnt, fs_node_t *fs_root)
 {
     mnt->flags |= FS_MOUNTPOINT;

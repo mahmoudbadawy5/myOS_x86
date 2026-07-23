@@ -23,6 +23,8 @@ int fopen(char *path, char *modes)
     int modes_mask = get_mode(modes);
 
     fs_node_t *node = get_node(path, root_dir);
+    if (!node && (modes_mask & (FILE_WRITE | FILE_APPEND)))
+        node = create_node(path, root_dir);
     if (!node)
         return -1;
 
