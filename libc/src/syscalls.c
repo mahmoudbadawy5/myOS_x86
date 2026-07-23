@@ -145,3 +145,31 @@ int sys_chdir(const char *path)
     __asm__ __volatile__("int $0x80" : "=a"(ret) : "a"(19), "b"(path) : "memory", "cc");
     return ret;
 }
+
+int sys_close(int fd)
+{
+    int ret;
+    __asm__ __volatile__("int $0x80" : "=a"(ret) : "a"(20), "b"(fd) : "memory", "cc");
+    return ret;
+}
+
+int sys_mkdir(const char *path)
+{
+    int ret;
+    __asm__ __volatile__("int $0x80" : "=a"(ret) : "a"(21), "b"(path) : "memory", "cc");
+    return ret;
+}
+
+int sys_unlink(const char *path)
+{
+    int ret;
+    __asm__ __volatile__("int $0x80" : "=a"(ret) : "a"(22), "b"(path) : "memory", "cc");
+    return ret;
+}
+
+int sys_ps(void *buf, int max_entries)
+{
+    int ret;
+    __asm__ __volatile__("int $0x80" : "=a"(ret) : "a"(23), "b"(buf), "c"(max_entries) : "memory", "cc");
+    return ret;
+}

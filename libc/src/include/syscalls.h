@@ -22,5 +22,9 @@ int sys_readdir(const char *path, char *buf, int max_entries);
 int sys_stat(const char *path, unsigned int *stat_buf);
 int sys_getcwd(char *buf, unsigned int size);
 int sys_chdir(const char *path);
+int sys_close(int fd);
+int sys_mkdir(const char *path);
+int sys_unlink(const char *path);
+int sys_ps(void *buf, int max_entries);
 
 #endif

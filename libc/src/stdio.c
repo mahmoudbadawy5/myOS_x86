@@ -201,7 +201,7 @@ FILE *fopen(const char *path, const char *mode)
 int fclose(FILE *fp)
 {
     if (!fp) return EOF;
-    /* No close syscall yet — just free the struct */
+    sys_close(fp->fd);
     free(fp);
     return 0;
 }

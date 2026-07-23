@@ -155,6 +155,28 @@ fs_node_t *create_node(char *path, fs_node_t *root)
     return NULL;
 }
 
+int mkdir_fs(fs_node_t *parent, const char *name)
+{
+    if (!parent || !name || !*name)
+        return -1;
+    if ((parent->flags & FS_MOUNTPOINT) == FS_MOUNTPOINT)
+        parent = parent->ptr;
+    if (parent->mkdir)
+        return parent->mkdir(parent, name);
+    return -1;
+}
+
+int unlink_fs(fs_node_t *parent, const char *name)
+{
+    if (!parent || !name || !*name)
+        return -1;
+    if ((parent->flags & FS_MOUNTPOINT) == FS_MOUNTPOINT)
+        parent = parent->ptr;
+    if (parent->unlink)
+        return parent->unlink(parent, name);
+    return -1;
+}
+
 void mount_dir(fs_node_t *mnt, fs_node_t *fs_root)
 {
     mnt->flags |= FS_MOUNTPOINT;

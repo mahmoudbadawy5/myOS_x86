@@ -123,7 +123,6 @@ void keyboard_handler(struct regs *r)
         {
             if (current_process) {
                 current_process->signal_pending = 2;
-                printf("Sending signal to process %08ux %s", current_process->pid, current_process->proc_name);
                 outportb(0x20, 0x20); /* EOI before schedule (which never returns) */
                 schedule(r);
             }

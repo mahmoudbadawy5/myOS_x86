@@ -23,6 +23,6 @@ int main(int argc, char **argv)
         sys_write(buf, n);
     }
 
-    /* No close syscall yet; fd cleaned up on process exit */
+    sys_close(fd);
     return 0;
 }

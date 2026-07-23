@@ -129,6 +129,21 @@ void fault_handler(struct regs *r)
         printf("EAX=0x%08ux EBX=0x%08ux ECX=0x%08ux EDX=0x%08ux\\n", r->eax, r->ebx, r->ecx, r->edx);
         printf("ESI=0x%08ux EDI=0x%08ux EBP=0x%08ux\\n", r->esi, r->edi, r->ebp);
         printf("-----------------------\\n");
+
+        /* If the fault came from ring 3 (user mode), kill the process
+         * instead of panicking the whole kernel. */
+        if (cpl == 3 && current_process) {
+            printf("Killing process %d (%s) due to %s\\n",
+                   current_process->pid, current_process->proc_name,
+                   exception_messages[r->int_no]);
+            kill_children_of(current_process->pid);
+            current_process->state = PROCESS_STATE_TERMINATED;
+            unblock_parent(current_process->pid);
+            current_process = NULL;
+            schedule(r);
+            for (;;);
+        }
+
         panic("%s Exception. System Halted!", exception_messages[r->int_no]);
         for (;;);
     }

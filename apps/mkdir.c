@@ -4,17 +4,15 @@
 int main(int argc, char **argv)
 {
     if (argc < 2) {
-        print("touch: missing file operand\n");
+        print("mkdir: missing operand\n");
         return 1;
     }
 
-    int fd = sys_open(argv[1], "w");
-    if (fd < 0) {
-        print("touch: ");
+    if (sys_mkdir(argv[1]) < 0) {
+        print("mkdir: cannot create directory '");
         print(argv[1]);
-        print(": cannot create\n");
+        print("'\n");
         return 1;
     }
-    sys_close(fd);
     return 0;
 }

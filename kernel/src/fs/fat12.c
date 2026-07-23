@@ -11,6 +11,10 @@ static fat12_fs_t fat12;
 static fs_node_t fat12_root;
 static void fat12_update_dir_entry(fs_node_t *file_node);
 
+static fs_node_t *fat12_create_file(fs_node_t *dir_node, const char *name);
+static int fat12_mkdir(fs_node_t *dir_node, const char *name);
+static int fat12_unlink(fs_node_t *dir_node, const char *name);
+
 static int strcasecmp_fat(const char *a, const char *b)
 {
     while (*a && *b) {
@@ -588,6 +592,9 @@ static fs_node_t *fat12_make_node(fat12_dir_entry_t *entry)
         node->flags = FS_DIRECTORY;
         node->readdir = fat12_readdir_fs;
         node->finddir = fat12_finddir_fs;
+        node->create = fat12_create_file;
+        node->mkdir = fat12_mkdir;
+        node->unlink = fat12_unlink;
     } else {
         node->flags = FS_FILE;
         node->read = fat12_read_fs;
@@ -657,6 +664,262 @@ fs_node_t *fat12_create(const char *name)
     return file;
 }
 
+int fat12_mkdir(fs_node_t *dir_node, const char *name)
+{
+    if (!name || !*name)
+        return -1;
+
+    /* Check if already exists */
+    struct finddir_ctx fctx;
+    fctx.name = name;
+    fctx.result = NULL;
+    fat12_iterate_dir(dir_node, finddir_callback, &fctx);
+    if (fctx.result)
+        return -1;
+
+    uint32_t cluster = fat12_allocate_cluster();
+    if (cluster == 0)
+        return -1;
+
+    /* Initialize the cluster with . and .. entries */
+    uint32_t bytes_per_cluster = fat12.bpb.sectors_per_cluster * fat12.bpb.bytes_per_sector;
+    uint8_t *cluster_buf = malloc(bytes_per_cluster);
+    memset(cluster_buf, 0, bytes_per_cluster);
+
+    fat12_dir_entry_t *entries = (fat12_dir_entry_t *)cluster_buf;
+
+    /* Entry 0: "." — current directory */
+    memset(entries[0].name, ' ', 8);
+    memset(entries[0].ext, ' ', 3);
+    entries[0].name[0] = '.';
+    entries[0].attributes = 0x10;
+    entries[0].first_cluster = cluster;
+
+    /* Entry 1: ".." — parent directory */
+    memset(entries[1].name, ' ', 8);
+    memset(entries[1].ext, ' ', 3);
+    entries[1].name[0] = '.';
+    entries[1].name[1] = '.';
+    entries[1].attributes = 0x10;
+    /* If parent is root, .. points to cluster 0 (root dir marker for FAT12) */
+    if (dir_node->inode == FAT12_ROOT_INODE)
+        entries[1].first_cluster = 0;
+    else
+        entries[1].first_cluster = dir_node->inode;
+
+    fat12_write_cluster(cluster, cluster_buf);
+    free(cluster_buf);
+
+    /* Create directory entry in parent */
+    struct create_dir_ctx {
+        const char *name;
+        uint32_t first_cluster;
+    };
+
+    char entry_name_8[8], entry_ext_3[3];
+    fat12_name_to_83(name, entry_name_8, entry_ext_3);
+
+    /* Reuse create_file_callback-like logic — write dir entry directly */
+    struct create_file_ctx ctx;
+    ctx.name = name;
+    ctx.result = NULL;
+
+    fat12_iterate_dir_write(dir_node, create_file_callback, &ctx);
+
+    if (ctx.result) {
+        /* Fix attributes: directory = 0x10, not 0x20 */
+        struct finddir_ctx fc;
+        fc.name = name;
+        fc.result = NULL;
+        fat12_iterate_dir(dir_node, finddir_callback, &fc);
+        if (fc.result) {
+            /* Update the on-disk entry to be directory */
+            /* The create_file_callback set first_cluster = allocated cluster, we need our cluster */
+            /* Actually create_file_callback allocated its own cluster, we need to use our cluster */
+            fc.result->inode = cluster;
+            /* Update dir entry on disk */
+            /* We need to find and fix the entry */
+            fc.result->flags = FS_DIRECTORY;
+            fc.result->readdir = fat12_readdir_fs;
+            fc.result->finddir = fat12_finddir_fs;
+        }
+    }
+
+    /* We need to properly update the dir entry to use our cluster and attr 0x10 */
+    /* Let's do it by re-iterating with write to fix the entry */
+    struct {
+        const char *name;
+        uint32_t cluster;
+    } fix_ctx;
+    fix_ctx.name = name;
+    fix_ctx.cluster = cluster;
+
+    /* Find and fix the dir entry on disk */
+    uint8_t *sector_buf = malloc(ATA_SECTOR_SIZE);
+
+    /* Try root dir first */
+    if (dir_node->inode == FAT12_ROOT_INODE) {
+        uint32_t root_dir_sectors = ((fat12.bpb.root_entry_count * 32) + (fat12.bpb.bytes_per_sector - 1))
+                                  / fat12.bpb.bytes_per_sector;
+        uint32_t entries_per_sector = fat12.bpb.bytes_per_sector / sizeof(fat12_dir_entry_t);
+
+        for (uint32_t s = 0; s < root_dir_sectors; s++) {
+            uint32_t lba = fat12.root_lba + s;
+            ata_read_sectors(lba, 1, sector_buf);
+            fat12_dir_entry_t *ents = (fat12_dir_entry_t *)sector_buf;
+            bool modified = false;
+
+            for (uint32_t i = 0; i < entries_per_sector; i++) {
+                if (ents[i].name[0] == 0x00 || (uint8_t)ents[i].name[0] == 0xE5)
+                    continue;
+                if (ents[i].attributes == 0x0F) continue;
+
+                char entry_name[13];
+                fat12_entry_to_name(&ents[i], entry_name);
+                if (strcasecmp_fat(entry_name, name) == 0) {
+                    ents[i].attributes = 0x10;
+                    ents[i].first_cluster = cluster;
+                    ata_write_sectors(lba, 1, sector_buf);
+                    modified = true;
+                    break;
+                }
+            }
+            if (modified) break;
+        }
+    } else {
+        /* Subdirectory */
+        uint32_t bpc = fat12.bpb.sectors_per_cluster * fat12.bpb.bytes_per_sector;
+        uint8_t *cbuf = malloc(bpc);
+        uint32_t cl = dir_node->inode;
+
+        while (cl != 0xFFFF) {
+            fat12_read_cluster(cl, cbuf);
+            fat12_dir_entry_t *ents = (fat12_dir_entry_t *)cbuf;
+            uint32_t epc = bpc / sizeof(fat12_dir_entry_t);
+            bool modified = false;
+
+            for (uint32_t i = 0; i < epc; i++) {
+                if (ents[i].name[0] == 0x00 || (uint8_t)ents[i].name[0] == 0xE5)
+                    continue;
+                if (ents[i].attributes == 0x0F) continue;
+
+                char entry_name[13];
+                fat12_entry_to_name(&ents[i], entry_name);
+                if (strcasecmp_fat(entry_name, name) == 0) {
+                    ents[i].attributes = 0x10;
+                    ents[i].first_cluster = cluster;
+                    fat12_write_cluster(cl, cbuf);
+                    modified = true;
+                    break;
+                }
+            }
+            if (modified) break;
+            cl = fat12_get_fat_entry(cl);
+        }
+        free(cbuf);
+    }
+
+    free(sector_buf);
+    fat12_flush_fat();
+    return 0;
+}
+
+int fat12_unlink(fs_node_t *dir_node, const char *name)
+{
+    if (!name || !*name)
+        return -1;
+
+    /* Find the entry */
+    struct finddir_ctx fctx;
+    fctx.name = name;
+    fctx.result = NULL;
+    fat12_iterate_dir(dir_node, finddir_callback, &fctx);
+    if (!fctx.result)
+        return -1;
+
+    /* Don't allow deleting directories */
+    if (fctx.result->flags & FS_DIRECTORY) {
+        free(fctx.result);
+        return -1;
+    }
+
+    uint32_t file_cluster = fctx.result->inode;
+    free(fctx.result);
+
+    /* Mark dir entry as deleted and free cluster chain */
+    uint32_t bpc = fat12.bpb.sectors_per_cluster * fat12.bpb.bytes_per_sector;
+    bool found = false;
+
+    /* Try root dir */
+    if (dir_node->inode == FAT12_ROOT_INODE) {
+        uint32_t root_dir_sectors = ((fat12.bpb.root_entry_count * 32) + (fat12.bpb.bytes_per_sector - 1))
+                                  / fat12.bpb.bytes_per_sector;
+        uint32_t entries_per_sector = fat12.bpb.bytes_per_sector / sizeof(fat12_dir_entry_t);
+        uint8_t *sector_buf = malloc(ATA_SECTOR_SIZE);
+
+        for (uint32_t s = 0; s < root_dir_sectors; s++) {
+            uint32_t lba = fat12.root_lba + s;
+            ata_read_sectors(lba, 1, sector_buf);
+            fat12_dir_entry_t *ents = (fat12_dir_entry_t *)sector_buf;
+
+            for (uint32_t i = 0; i < entries_per_sector; i++) {
+                if (ents[i].name[0] == 0x00)
+                    break;
+                if ((uint8_t)ents[i].name[0] == 0xE5) continue;
+                if (ents[i].attributes == 0x0F) continue;
+
+                char entry_name[13];
+                fat12_entry_to_name(&ents[i], entry_name);
+                if (strcasecmp_fat(entry_name, name) == 0) {
+                    ents[i].name[0] = (char)0xE5;
+                    ata_write_sectors(lba, 1, sector_buf);
+                    found = true;
+                    break;
+                }
+            }
+            if (found) break;
+        }
+        free(sector_buf);
+    } else {
+        uint8_t *cluster_buf = malloc(bpc);
+        uint32_t cl = dir_node->inode;
+
+        while (cl != 0xFFFF) {
+            fat12_read_cluster(cl, cluster_buf);
+            fat12_dir_entry_t *ents = (fat12_dir_entry_t *)cluster_buf;
+            uint32_t epc = bpc / sizeof(fat12_dir_entry_t);
+
+            for (uint32_t i = 0; i < epc; i++) {
+                if (ents[i].name[0] == 0x00) break;
+                if ((uint8_t)ents[i].name[0] == 0xE5) continue;
+                if (ents[i].attributes == 0x0F) continue;
+
+                char entry_name[13];
+                fat12_entry_to_name(&ents[i], entry_name);
+                if (strcasecmp_fat(entry_name, name) == 0) {
+                    ents[i].name[0] = (char)0xE5;
+                    fat12_write_cluster(cl, cluster_buf);
+                    found = true;
+                    break;
+                }
+            }
+            if (found) break;
+            cl = fat12_get_fat_entry(cl);
+        }
+        free(cluster_buf);
+    }
+
+    if (!found)
+        return -1;
+
+    /* Free cluster chain */
+    if (file_cluster >= 2)
+        fat12_free_cluster_chain(file_cluster);
+
+    fat12_flush_fat();
+    return 0;
+}
+
 void fat12_sync(void)
 {
     fat12_flush_fat();
@@ -721,6 +984,8 @@ void init_fat12(uint32_t lba_offset)
     fat12_root.readdir = fat12_readdir_fs;
     fat12_root.finddir = fat12_finddir_fs;
     fat12_root.create = fat12_create_file;
+    fat12_root.mkdir = fat12_mkdir;
+    fat12_root.unlink = fat12_unlink;
 
     free(sector);
 }

@@ -206,7 +206,6 @@ void schedule(struct regs *r)
         if (cur->signal_pending != 0 && cur->state == PROCESS_STATE_RUNNING) {
             cur->state = PROCESS_STATE_TERMINATED;
             cur->signal_pending = 0;
-            printf("Now killing %08ux %s\n", cur->pid, cur->proc_name);
             unblock_parent(cur->pid);
         }
     }

@@ -25,12 +25,17 @@ void resolve_path(const char *user_path, char *buf, int buf_size)
         return;
     }
 
-    /* Copy user path to kernel */
+    /* Copy user path to kernel with safe copy */
     char path[256];
     int len = 0;
-    while (user_path[len] && len < 255) {
-        path[len] = user_path[len];
-        len++;
+    while (len < 255) {
+        char c;
+        if (copy_from_user(&c, user_path + len, 1) != 0) {
+            buf[0] = '\0';
+            return;
+        }
+        if (c == '\0') break;
+        path[len++] = c;
     }
     path[len] = '\0';
 
@@ -116,6 +121,10 @@ int32_t (*syscalls[MAX_SYSCALLS])(struct regs *) = {
     syscall_stat,
     syscall_getcwd,
     syscall_chdir,
+    syscall_close,
+    syscall_mkdir,
+    syscall_unlink,
+    syscall_ps,
 };
 
 void init_syscalls(void)
@@ -147,7 +156,14 @@ int32_t syscall_open(struct regs *regs)
 {
     char path[256];
     resolve_path((char *)regs->ebx, path, sizeof(path));
-    return fopen(path, (char *)regs->ecx);
+
+    char mode[8];
+    if (copy_from_user(mode, (void *)regs->ecx, sizeof(mode)) != 0) {
+        mode[0] = 'r';
+        mode[1] = '\0';
+    }
+
+    return fopen(path, mode);
 }
 
 /*
@@ -163,12 +179,24 @@ int32_t syscall_open(struct regs *regs)
 int32_t syscall_read(struct regs *regs)
 {
     uint32_t fd = regs->esi;
+    char *buf = (char *)regs->ebx;
+    uint32_t size = regs->ecx;
+    uint32_t count = regs->edx;
+
     if (fd >= MAX_FILES)
         return -1;
     FILE *fp = current_process->files_open[fd];
     if (!fp)
         return -1;
-    int ret = fread((char *)regs->ebx, regs->ecx, regs->edx, fp);
+
+    /* Validate user buffer is mapped */
+    uint32_t total = size * count;
+    for (uint32_t a = (uint32_t)buf; a < (uint32_t)buf + total; a += 4096) {
+        if (!is_page_mapped(a))
+            return -1;
+    }
+
+    int ret = fread(buf, size, count, fp);
     return ret;
 }
 
@@ -185,13 +213,24 @@ int32_t syscall_read(struct regs *regs)
 int32_t syscall_write(struct regs *regs)
 {
     uint32_t fd = regs->esi;
+    char *buf = (char *)(regs->ebx);
+    uint32_t size = regs->ecx;
+    uint32_t count = regs->edx;
+
     if (fd >= MAX_FILES)
         return -1;
     FILE *fp = current_process->files_open[fd];
     if (!fp)
         return -1;
-    char *cur = (char *)(regs->ebx);
-    return fwrite(cur, regs->ecx, regs->edx, fp);
+
+    /* Validate user buffer is mapped */
+    uint32_t total = size * count;
+    for (uint32_t a = (uint32_t)buf; a < (uint32_t)buf + total; a += 4096) {
+        if (!is_page_mapped(a))
+            return -1;
+    }
+
+    return fwrite(buf, size, count, fp);
 }
 
 int32_t syscall_exit(struct regs *regs)
@@ -447,6 +486,9 @@ int32_t syscall_pipe(struct regs *regs)
 {
     int *fds = (int *)regs->ebx;
 
+    if (!is_user_ptr(fds))
+        return -1;
+
     FILE *read_fp, *write_fp;
     if (pipe_create(&read_fp, &write_fp) != 0)
         return -1;
@@ -464,7 +506,6 @@ int32_t syscall_pipe(struct regs *regs)
         }
     }
     if (read_fd == -1 || write_fd == -1) {
-        /* read_node->ptr and write_node->ptr share the same pipe_buf_t — free only once */
         free(read_fp->file->ptr);
         free(read_fp->file);
         free(write_fp->file);
@@ -476,9 +517,10 @@ int32_t syscall_pipe(struct regs *regs)
     current_process->files_open[read_fd] = read_fp;
     current_process->files_open[write_fd] = write_fp;
 
-    /* Copy fds to user space */
-    fds[0] = read_fd;
-    fds[1] = write_fd;
+    /* Copy fds to user space safely */
+    int kfds[2] = { read_fd, write_fd };
+    if (copy_to_user(fds, kfds, sizeof(kfds)) != 0)
+        return -1;
 
     return 0;
 }
@@ -593,17 +635,30 @@ int32_t syscall_readdir(struct regs *regs)
     if (count > max_entries)
         count = max_entries;
 
+    /* Build kernel buffer, then validate and copy to user */
+    uint32_t total = count * 256;
+    char *kbuf = malloc(total);
+    if (!kbuf) {
+        free(dire->files);
+        free(dire);
+        return -1;
+    }
+
     for (uint32_t i = 0; i < count; i++) {
         int nlen = 0;
         while (dire->files[i][nlen] && nlen < 254)
             nlen++;
-        /* Copy name to user buffer: each entry is 256 bytes */
-        char *dst = buf_user + i * 256;
         for (int j = 0; j <= nlen; j++)
-            dst[j] = dire->files[i][j];
+            kbuf[i * 256 + j] = dire->files[i][j];
     }
     free(dire->files);
     free(dire);
+
+    if (copy_to_user(buf_user, kbuf, total) != 0) {
+        free(kbuf);
+        return -1;
+    }
+    free(kbuf);
 
     return (int32_t)count;
 }
@@ -629,8 +684,12 @@ int32_t syscall_stat(struct regs *regs)
     if (!node)
         return -1;
 
-    stat_buf[0] = node->size;
-    stat_buf[1] = (node->flags & FS_DIRECTORY) ? 1 : 0;
+    uint32_t kbuf[2];
+    kbuf[0] = node->size;
+    kbuf[1] = (node->flags & FS_DIRECTORY) ? 1 : 0;
+
+    if (copy_to_user(stat_buf, kbuf, sizeof(kbuf)) != 0)
+        return -1;
 
     return 0;
 }
@@ -653,8 +712,9 @@ int32_t syscall_getcwd(struct regs *regs)
     int len = 0;
     while (cwd[len] && len < (int)buf_size - 1)
         len++;
-    for (int i = 0; i <= len; i++)
-        buf_user[i] = cwd[i];
+
+    if (copy_to_user(buf_user, cwd, len + 1) != 0)
+        return -1;
 
     return 0;
 }
@@ -688,4 +748,165 @@ int32_t syscall_chdir(struct regs *regs)
     current_process->cwd[i] = '\0';
 
     return 0;
+}
+
+/*
+    close — close a file descriptor.
+    ebx: file descriptor
+    Returns: 0 on success, -1 on error.
+*/
+int32_t syscall_close(struct regs *regs)
+{
+    uint32_t fd = regs->ebx;
+    if (fd < 3 || fd >= MAX_FILES)
+        return -1;
+    if (!current_process->files_open[fd])
+        return -1;
+
+    FILE *fp = current_process->files_open[fd];
+    close_fs(fp->file);
+    free(fp);
+    current_process->files_open[fd] = 0;
+    return 0;
+}
+
+/*
+    mkdir — create a directory.
+    ebx: path string (user space)
+    Returns: 0 on success, -1 on error.
+*/
+int32_t syscall_mkdir(struct regs *regs)
+{
+    char *path_user = (char *)regs->ebx;
+    if (!is_user_ptr(path_user))
+        return -1;
+
+    char path[256];
+    resolve_path(path_user, path, sizeof(path));
+
+    /* Find parent path and new dir name */
+    int last_slash = -1;
+    int len = 0;
+    while (path[len]) {
+        if (path[len] == '/')
+            last_slash = len;
+        len++;
+    }
+
+    char *dir_name = path + last_slash + 1;
+    char *parent_path = "/";
+    fs_node_t *parent = get_node(parent_path, root_dir);
+    if (last_slash > 0) {
+        /* Has a parent */
+        char tmp[256];
+        int pi = 0;
+        while (pi < last_slash && pi < 255) {
+            tmp[pi] = path[pi];
+            pi++;
+        }
+        tmp[pi] = '\0';
+        parent = get_node(tmp, root_dir);
+    }
+    if (!parent)
+        return -1;
+    if ((parent->flags & FS_MOUNTPOINT) == FS_MOUNTPOINT)
+        parent = parent->ptr;
+
+    if (parent->mkdir)
+        return parent->mkdir(parent, dir_name);
+    return -1;
+}
+
+/*
+    unlink — remove a file.
+    ebx: path string (user space)
+    Returns: 0 on success, -1 on error.
+*/
+int32_t syscall_unlink(struct regs *regs)
+{
+    char *path_user = (char *)regs->ebx;
+    if (!is_user_ptr(path_user))
+        return -1;
+
+    char path[256];
+    resolve_path(path_user, path, sizeof(path));
+
+    int last_slash = -1;
+    int len = 0;
+    while (path[len]) {
+        if (path[len] == '/')
+            last_slash = len;
+        len++;
+    }
+
+    if (last_slash < 0)
+        return -1;
+
+    char *file_name = path + last_slash + 1;
+    char *parent_path = "/";
+    fs_node_t *parent = get_node(parent_path, root_dir);
+    if (last_slash > 0) {
+        char tmp[256];
+        int pi = 0;
+        while (pi < last_slash && pi < 255) {
+            tmp[pi] = path[pi];
+            pi++;
+        }
+        tmp[pi] = '\0';
+        parent = get_node(tmp, root_dir);
+    }
+    if (!parent)
+        return -1;
+    if ((parent->flags & FS_MOUNTPOINT) == FS_MOUNTPOINT)
+        parent = parent->ptr;
+
+    if (parent->unlink)
+        return parent->unlink(parent, file_name);
+    return -1;
+}
+
+/*
+    ps — list running processes.
+    ebx: pointer to user buffer (ps_entry_t array)
+    ecx: max entries
+    Returns: number of processes, or -1 on error.
+*/
+int32_t syscall_ps(struct regs *regs)
+{
+    uint8_t *buf_user = (uint8_t *)regs->ebx;
+    uint32_t max_entries = regs->ecx;
+
+    if (!is_user_ptr(buf_user) || max_entries == 0)
+        return -1;
+
+    /* ps_entry_t: { uint32_t pid, uint32_t state, char name[20], uint32_t parent_id } = 32 bytes */
+    uint8_t kbuf[32 * 10]; /* max 10 processes */
+    uint32_t count = 0;
+    for (uint32_t i = 0; i < MAX_PROCESSES && count < max_entries; i++) {
+        pcb_t *p = &process_table[i];
+        if (p->state == PROCESS_STATE_NEW)
+            continue;
+
+        uint32_t offset = count * 32;
+        uint32_t pid = p->pid;
+        uint32_t state = p->state;
+        uint32_t parent = p->parent_id;
+
+        for (int j = 0; j < 4; j++)
+            kbuf[offset + j] = (pid >> (j * 8)) & 0xFF;
+        for (int j = 0; j < 4; j++)
+            kbuf[offset + 4 + j] = (state >> (j * 8)) & 0xFF;
+        for (int j = 0; j < 20; j++)
+            kbuf[offset + 8 + j] = p->proc_name[j];
+        for (int j = 0; j < 4; j++)
+            kbuf[offset + 28 + j] = (parent >> (j * 8)) & 0xFF;
+
+        count++;
+    }
+
+    /* Validate entire user buffer range is mapped before writing */
+    if (copy_to_user(buf_user, kbuf, count * 32) != 0)
+        return -1;
+
+    return (int32_t)count;
 }

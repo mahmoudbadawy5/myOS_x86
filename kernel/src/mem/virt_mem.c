@@ -187,3 +187,68 @@ void switch_to_kernel_page_dir(void)
     if (kernel_page_dir)
         set_page_dir((uint32_t *)((uint32_t)kernel_page_dir - KERNEL_VIRTUAL_BASE));
 }
+
+/* Check if a user virtual address has a present page in the current page tables */
+int is_page_mapped(uint32_t virt_addr)
+{
+    uint32_t pd_index = virt_addr >> 22;
+    uint32_t pt_index = (virt_addr >> 12) & 0x3FF;
+
+    /* cur_page_dir is the kernel-virtual address of the active page directory */
+    if (!cur_page_dir)
+        return 0;
+    uint32_t pd_entry = cur_page_dir[pd_index];
+    if (!(pd_entry & PAGE_PRESENT))
+        return 0;
+
+    uint32_t *table = (uint32_t *)((pd_entry & PAGE_ADDR) + KERNEL_VIRTUAL_BASE);
+    uint32_t pt_entry = table[pt_index];
+    return (pt_entry & PAGE_PRESENT) != 0;
+}
+
+/* Copy data to user space, checking each page is mapped first.
+ * Returns 0 on success, -1 if any page is unmapped. */
+int copy_to_user(void *dst, const void *src, uint32_t size)
+{
+    uint32_t start = (uint32_t)dst;
+    uint32_t end = start + size;
+
+    /* Check all pages in the range */
+    for (uint32_t addr = start & ~(4095); addr < end; addr += 4096) {
+        if (addr < start) addr = start; /* handle first partial page */
+        if (!is_page_mapped(addr))
+            return -1;
+    }
+    /* Also check the last byte's page if unaligned */
+    if (end > start && !is_page_mapped((end - 1) & ~(4095)))
+        return -1;
+
+    /* All pages mapped — safe to copy */
+    uint8_t *d = (uint8_t *)dst;
+    const uint8_t *s = (const uint8_t *)src;
+    for (uint32_t i = 0; i < size; i++)
+        d[i] = s[i];
+    return 0;
+}
+
+/* Copy data from user space, checking each page is mapped first.
+ * Returns 0 on success, -1 if any page is unmapped. */
+int copy_from_user(void *dst, const void *src, uint32_t size)
+{
+    uint32_t start = (uint32_t)src;
+    uint32_t end = start + size;
+
+    for (uint32_t addr = start & ~(4095); addr < end; addr += 4096) {
+        if (addr < start) addr = start;
+        if (!is_page_mapped(addr))
+            return -1;
+    }
+    if (end > start && !is_page_mapped((end - 1) & ~(4095)))
+        return -1;
+
+    uint8_t *d = (uint8_t *)dst;
+    const uint8_t *s = (const uint8_t *)src;
+    for (uint32_t i = 0; i < size; i++)
+        d[i] = s[i];
+    return 0;
+}
