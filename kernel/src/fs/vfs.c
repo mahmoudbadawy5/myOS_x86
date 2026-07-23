@@ -42,9 +42,11 @@ void close_fs(fs_node_t *node)
 
 struct dirent *readdir_fs(fs_node_t *node)
 {
-    if ((node->flags & FS_DIRECTORY) != FS_DIRECTORY || !node->readdir)
+    if ((node->flags & FS_DIRECTORY) != FS_DIRECTORY)
         return NULL;
-    struct dirent *d = node->readdir(node);
+    struct dirent *d = NULL;
+    if (node->readdir)
+        d = node->readdir(node);
     mount_entry_t *m = node->mounts;
     while (m)
     {
@@ -69,8 +71,20 @@ struct dirent *readdir_fs(fs_node_t *node)
 
 fs_node_t *finddir_fs(fs_node_t *node, char *name)
 {
-    if ((node->flags & FS_DIRECTORY) == FS_DIRECTORY && node->finddir)
-        return node->finddir(node, name);
+    if ((node->flags & FS_DIRECTORY) != FS_DIRECTORY)
+        return NULL;
+    if (node->finddir) {
+        fs_node_t *found = node->finddir(node, name);
+        if (found)
+            return found;
+    }
+    /* Fallback: check mount entries */
+    mount_entry_t *m = node->mounts;
+    while (m) {
+        if (strcmp(m->name, name) == 0)
+            return m->node;
+        m = m->next;
+    }
     return NULL;
 }
 

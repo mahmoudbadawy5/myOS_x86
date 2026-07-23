@@ -99,22 +99,18 @@ void fault_handler(struct regs *r)
             __asm__ __volatile__("mov %%cr2, %0" : "=r"(cr2));
             uint32_t page_addr = cr2 & 0xFFFFF000;
 
-            for (int i = 0; i < MAX_PROCESSES; i++) {
-                pcb_t *p = &process_table[i];
-                if (p->state == PROCESS_STATE_TERMINATED)
-                    continue;
-                if (p->kernel_stack_bottom == 0)
-                    continue;
-                /* CR2 must be one page below the current stack bottom */
-                if (cr2 >= p->kernel_stack_bottom - 4096 &&
-                    cr2 <  p->kernel_stack_bottom) {
-                    uint32_t *page = get_page(page_addr, 0);
-                    if (!(*page & PAGE_PRESENT)) {
-                        allocate_page(page);
-                        p->kernel_stack_bottom = page_addr;
-                        tlb_flush();
-                        return;
-                    }
+            pcb_t *p = current_process;
+            if (p && p->state != PROCESS_STATE_TERMINATED &&
+                p->kernel_stack_bottom != 0 &&
+                p->kernel_stack_bottom > p->kernel_stack_alloc &&
+                cr2 >= p->kernel_stack_bottom - 4096 &&
+                cr2 <  p->kernel_stack_bottom) {
+                uint32_t *page = get_page(page_addr, 0);
+                if (!(*page & PAGE_PRESENT)) {
+                    allocate_page(page);
+                    p->kernel_stack_bottom = page_addr;
+                    tlb_flush();
+                    return;
                 }
             }
         }

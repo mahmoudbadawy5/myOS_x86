@@ -1,6 +1,7 @@
 #include <types.h>
 #include <stdio.h>
 #include <string.h>
+#include <arch.h>
 #include <arch/syscalls.h>
 #include <idt.h>
 #include <proc/process.h>
@@ -10,6 +11,12 @@
 #include <mem/vmm.h>
 #include <mem/malloc.h>
 #include <fs/pipe.h>
+
+/* Validate that a pointer lies in userspace (below kernel base) */
+static inline int is_user_ptr(const void *p)
+{
+    return (uint32_t)p < KERNEL_VIRTUAL_BASE && p != 0;
+}
 
 void resolve_path(const char *user_path, char *buf, int buf_size)
 {
@@ -68,7 +75,8 @@ void resolve_path(const char *user_path, char *buf, int buf_size)
                     ni--;
             }
         } else {
-            norm[ni++] = '/';
+            if (ni < 255)
+                norm[ni++] = '/';
             for (int j = start; j < i && ni < 255; j++)
                 norm[ni++] = abs[j];
         }
@@ -567,7 +575,7 @@ int32_t syscall_readdir(struct regs *regs)
     char *buf_user = (char *)regs->ecx;
     uint32_t max_entries = regs->edx;
 
-    if (!path_user || !buf_user || max_entries == 0)
+    if (!is_user_ptr(path_user) || !is_user_ptr(buf_user) || max_entries == 0)
         return -1;
 
     char path[256];
@@ -611,7 +619,7 @@ int32_t syscall_stat(struct regs *regs)
     char *path_user = (char *)regs->ebx;
     uint32_t *stat_buf = (uint32_t *)regs->ecx;
 
-    if (!path_user || !stat_buf)
+    if (!is_user_ptr(path_user) || !is_user_ptr(stat_buf))
         return -1;
 
     char path[256];
@@ -638,7 +646,7 @@ int32_t syscall_getcwd(struct regs *regs)
     char *buf_user = (char *)regs->ebx;
     uint32_t buf_size = regs->ecx;
 
-    if (!buf_user || buf_size == 0)
+    if (!is_user_ptr(buf_user) || buf_size == 0)
         return -1;
 
     char *cwd = current_process->cwd;
@@ -659,7 +667,7 @@ int32_t syscall_getcwd(struct regs *regs)
 int32_t syscall_chdir(struct regs *regs)
 {
     char *path_user = (char *)regs->ebx;
-    if (!path_user)
+    if (!is_user_ptr(path_user))
         return -1;
 
     char path[256];

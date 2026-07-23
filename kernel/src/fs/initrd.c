@@ -16,6 +16,8 @@ uint32_t initrd_read_fs(fs_node_t *node, uint32_t size, uint32_t units, uint8_t 
 {
     if ((node->flags & FS_DIRECTORY) == FS_DIRECTORY)
         return 0;
+    if (size == 0 || units == 0)
+        return 0;
     uint32_t total = size * units;
     if (node->seek_offset >= node->size)
         return 0;

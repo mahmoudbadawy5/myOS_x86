@@ -12,6 +12,8 @@
 #define FILE_WRITE 0x02
 #define FILE_APPEND 0x04
 
+#define READ_ERR (-1)
+
 typedef struct __sFILE
 {
     uint8_t flags;
@@ -19,7 +21,7 @@ typedef struct __sFILE
 } FILE;
 
 int fopen(char *path, char *modes);
-size_t fread(char *buf, size_t size, size_t count, FILE *fp);
+int fread(char *buf, size_t size, size_t count, FILE *fp);
 size_t fwrite(const char *buf, size_t size, size_t count, FILE *fp);
 
 size_t
