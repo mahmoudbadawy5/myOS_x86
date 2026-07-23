@@ -3,30 +3,6 @@
 #define LINE_MAX 256
 #define MAX_ARGS 16
 
-static int strlen(const char *s)
-{
-    int i = 0;
-    while (s[i])
-        i++;
-    return i;
-}
-
-static int strcmp(const char *a, const char *b)
-{
-    while (*a && *a == *b)
-    {
-        a++;
-        b++;
-    }
-    return *a - *b;
-}
-
-static void memset(char *buf, char val, int len)
-{
-    for (int i = 0; i < len; i++)
-        buf[i] = val;
-}
-
 void print_prompt(void)
 {
     print("myOS> ");
