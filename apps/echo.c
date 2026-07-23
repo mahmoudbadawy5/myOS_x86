@@ -1,11 +1,12 @@
 #include <test.h>
 
-int main()
+int main(int argc, char **argv)
 {
-    while(1) {
-        char x[2] = {0, 0};
-        if(read(x, 2)) {
-            print(x);
-        }
+    for (int i = 1; i < argc; i++) {
+        print(argv[i]);
+        if (i < argc - 1)
+            print(" ");
     }
+    print("\n");
+    return 0;
 }

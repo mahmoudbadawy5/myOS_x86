@@ -154,8 +154,50 @@ int32_t syscall_sbrk(struct regs *regs)
 
 int32_t syscall_spawn(struct regs *regs)
 {
-    char *path = (char *)regs->ebx;
-    create_process(path, current_process->pid);
+    char *cmdline_user = (char *)regs->ebx;
+
+    /* Copy command line to kernel buffer (user memory may vanish after page switch) */
+    char cmdline[256];
+    int len = 0;
+    while (cmdline_user[len] && len < 255) {
+        cmdline[len] = cmdline_user[len];
+        len++;
+    }
+    cmdline[len] = '\0';
+
+    /* Skip leading spaces */
+    char *p = cmdline;
+    while (*p == ' ') p++;
+
+    /* Parse into argv */
+    const char *argv[16];
+    int argc = 0;
+    while (*p && argc < 15) {
+        argv[argc++] = p;
+        while (*p && *p != ' ') p++;
+        if (*p) {
+            *p = '\0';
+            p++;
+            while (*p == ' ') p++;
+        }
+    }
+
+    if (argc == 0)
+        return -1;
+
+    /* Build path: "/<argv[0]>.bin" */
+    char path[128];
+    path[0] = '/';
+    int i;
+    for (i = 0; argv[0][i] && i < 122; i++)
+        path[i + 1] = argv[0][i];
+    path[i + 1] = '.';
+    path[i + 2] = 'b';
+    path[i + 3] = 'i';
+    path[i + 4] = 'n';
+    path[i + 5] = '\0';
+
+    create_process(path, current_process->pid, argc, argv);
     return 0;
 }
 

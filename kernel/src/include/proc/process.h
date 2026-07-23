@@ -5,7 +5,7 @@
 #include <stdio.h>
 
 #define MAX_PROCESSES 10
-#define USER_CODE_BASE  0x40000000
+#define USER_CODE_BASE  0x08048000
 #define USER_STACK_TOP  0xA0000000
 #define USER_STACK_PAGES 4
 #define KERNEL_STACK_SIZE (2 * 4096)
@@ -49,7 +49,7 @@ typedef struct pcb {
 } pcb_t;
 
 void init_multitasking(void);
-void create_process(const char *app_name, uint32_t parent_pid);
+void create_process(const char *app_name, uint32_t parent_pid, int argc, const char **argv);
 void schedule(struct regs *r);
 
 uint32_t find_terminated_child(uint32_t parent_pid);

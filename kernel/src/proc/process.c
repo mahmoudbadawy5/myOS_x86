@@ -38,7 +38,7 @@ void init_multitasking(void)
     num_processes = 0;
 }
 
-void create_process(const char *app_path, uint32_t parent_pid)
+void create_process(const char *app_path, uint32_t parent_pid, int argc, const char **argv)
 {
     if (num_processes >= MAX_PROCESSES)
         return;
@@ -119,6 +119,61 @@ void create_process(const char *app_path, uint32_t parent_pid)
         }
         return;
     }
+
+    /* Build argv on user stack.
+     * Layout (grows downward from USER_STACK_TOP):
+     *   [strings area at high addresses]
+     *   [NULL envp terminator]
+     *   [NULL argv terminator]
+     *   [argv[n-1] ptr]
+     *   ...
+     *   [argv[0] ptr]
+     *   [argc]              <- esp */
+    if (argc > 0 && argv) {
+        uint32_t stack_top = USER_STACK_TOP - 16;
+
+        /* 1. Calculate total string data size */
+        uint32_t total_str_len = 0;
+        for (int a = 0; a < argc; a++) {
+            const char *s = argv[a];
+            uint32_t slen = 0;
+            while (s[slen]) slen++;
+            total_str_len += slen + 1;
+        }
+
+        /* 2. Place strings at top of stack area, growing downward */
+        uint32_t str_area = stack_top - total_str_len;
+        str_area &= ~3; /* align */
+
+        /* 3. Layout: [argc][argv[0]][argv[1]]...[argv[n-1]][NULL][NULL(envp)][strings...] */
+        uint32_t argv_ptrs_size = (argc + 2) * 4; /* argc + argc ptrs + NULL + NULL(envp) */
+        uint32_t esp = str_area - argv_ptrs_size;
+        esp &= ~3; /* align */
+
+        /* 4. Write argc */
+        uint32_t *ustack = (uint32_t *)esp;
+        ustack[0] = argc;
+
+        /* 5. Write argv pointers and copy strings */
+        uint32_t str_off = str_area;
+        for (int a = 0; a < argc; a++) {
+            ustack[1 + a] = str_off; /* pointer to string in user stack */
+            const char *s = argv[a];
+            uint32_t slen = 0;
+            while (s[slen]) slen++;
+            slen++; /* include null terminator */
+            memcpy((void *)str_off, s, slen);
+            str_off += slen;
+        }
+        ustack[1 + argc] = 0;   /* argv terminator */
+        ustack[2 + argc] = 0;   /* envp terminator (simplified) */
+
+        /* 6. Set user esp and update iret frame */
+        pcb->regs.esp = esp;
+        uint32_t *frame = (uint32_t *)pcb->kernel_stack_top;
+        frame[3] = esp; /* user ESP in iret frame */
+    }
+
     set_page_dir((uint32_t *)old_cr3);
 
     pcb->state = PROCESS_STATE_NEW;
