@@ -6,13 +6,13 @@ Build a userspace C library providing standard headers (stdio.h, stdlib.h, strin
 ## Completed
 
 ### Step 1: Headers + Implementations (DONE)
-Created 8 headers and 5 source files:
+Created 8 headers and 6 source files:
 - `stdarg.h`, `stddef.h` -- compiler support
-- `string.h` / `string.c` -- 17 functions: memcpy, memmove, memset, memcmp, strlen, strcpy, strncpy, strcmp, strncmp, strcat, strncat, strcasecmp, strncasecmp, strchr, strrchr, strstr, strdup, strtok
+- `string.h` / `string.c` -- 18 functions: memcpy, memmove, memset, memcmp, strlen, strcpy, strncpy, strcmp, strncmp, strcat, strncat, strcasecmp, strncasecmp, strchr, strrchr, strstr, strdup, strtok
 - `ctype.h` / `ctype.c` -- 12 functions: isdigit, isalpha, isalnum, isspace, isupper, islower, isprint, iscntrl, isxdigit, toupper, tolower
 - `stdio.h` / `stdio.c` -- printf, fprintf, sprintf, snprintf, vsnprintf, puts, putchar, getchar, fopen, fclose, fread, fwrite, fgets, fgetc, fputs, fputc, feof, ferror, perror, FILE type, stdin/stdout/stderr
 - `stdlib.h` / `stdlib.c` -- malloc, free, realloc, atoi, atol, abs, labs
-- `syscalls.h` / `syscalls.c` -- clean syscall wrappers (sys_open, sys_read, sys_write, sys_read_fd, sys_write_fd, sys_exec, sys_spawn, sys_wait, sys_pipe, sys_dup, sys_kill, sys_getpid, sys_sbrk, sys_exit)
+- `syscalls.h` / `syscalls.c` -- clean syscall wrappers (sys_open, sys_read, sys_write, sys_read_fd, sys_write_fd, sys_exec, sys_spawn, sys_wait, sys_pipe, sys_dup, sys_kill, sys_getpid, sys_sbrk, sys_lseek, sys_exit)
 - `test.h` / `test.c` -- backward-compatible wrappers (print, read, exit, etc.)
 
 ### Step 2: Shell cleanup (DONE)
@@ -45,7 +45,7 @@ Created 8 headers and 5 source files:
 ## Files
 ```
 libc/
-  include/
+  src/include/
     stdarg.h, stddef.h, string.h, ctype.h, stdio.h, stdlib.h, syscalls.h, test.h
   src/
     string.c, ctype.c, stdio.c, stdlib.c, syscalls.c, test.c, crt0.asm

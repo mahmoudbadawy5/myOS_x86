@@ -81,7 +81,8 @@ int main(void)
     /* Realloc */
     void *p4 = malloc(32);
     if (p4) memset(p4, 'B', 31);
-    p4 = realloc(p4, 64);
+    void *p4_new = realloc(p4, 64);
+    if (p4_new) p4 = p4_new;
     printf("  realloc(32->64) = %p\n", p4);
     free(p4);
 

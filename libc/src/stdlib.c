@@ -33,6 +33,8 @@ void *malloc(size_t size)
     }
 
     size_t total = size + sizeof(malloc_header_t);
+    if (total < size)
+        return (void *)0;
     header = (malloc_header_t *)sys_sbrk(total);
     if ((void *)header == (void *)0 || (void *)header == (void *)-1)
         return (void *)0;

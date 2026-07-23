@@ -449,10 +449,23 @@ int32_t syscall_lseek(struct regs *regs)
     if (!fp || !fp->file)
         return -1;
 
-    /* For SEEK_CUR, add current offset before calling seek_fs */
-    if (whence == 1) { /* SEEK_CUR */
-        offset += fp->file->seek_offset;
-        whence = 0; /* now treat as SEEK_SET */
+    if (whence == 0) { /* SEEK_SET */
+        if (offset < 0)
+            return -1;
+    } else if (whence == 1) { /* SEEK_CUR */
+        int32_t new_off = fp->file->seek_offset + offset;
+        if (offset > 0 && new_off < 0)
+            return -1;
+        if (offset < 0 && new_off > 0)
+            return -1;
+        if (new_off < 0)
+            return -1;
+        offset = new_off;
+        whence = 0;
+    } else if (whence == 2) { /* SEEK_END */
+        /* offset relative to end, allow negative to mean before EOF */
+    } else {
+        return -1;
     }
 
     seek_fs(fp->file, offset, whence);

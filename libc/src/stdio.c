@@ -27,26 +27,26 @@ static void print_uint(char *buf, unsigned int *pos, unsigned int limit, unsigne
     }
     int zeros = min_width - len;
     if (zeros < 0) zeros = 0;
-    while (zeros > 0 && *pos < limit - 1) {
+    while (zeros > 0 && *pos < limit) {
         buf[(*pos)++] = '0';
         zeros--;
     }
-    for (int i = len - 1; i >= 0 && *pos < limit - 1; i--)
+    for (int i = len - 1; i >= 0 && *pos < limit; i--)
         buf[(*pos)++] = tmp[i];
 }
 
 static void print_int_val(char *buf, unsigned int *pos, unsigned int limit, int val, int base, int min_width)
 {
-    if (val < 0 && *pos < limit - 1) {
+    if (val < 0 && *pos < limit) {
         buf[(*pos)++] = '-';
         val = -val;
     }
     print_uint(buf, pos, limit, (unsigned int)val, base, min_width);
 }
 
-void vsnprintf(char *buf, int bufsize, const char *format, va_list args)
+int vsnprintf(char *buf, size_t bufsize, const char *format, va_list args)
 {
-    if (bufsize <= 0) return;
+    if (bufsize == 0) return 0;
     unsigned int pos = 0;
     unsigned int limit = (unsigned int)bufsize - 1;
 
@@ -57,12 +57,10 @@ void vsnprintf(char *buf, int bufsize, const char *format, va_list args)
         }
         i++;
         int min_width = 0;
-        if (format[i] == '0') {
+        if (format[i] == '0') i++;
+        while (format[i] >= '0' && format[i] <= '9') {
+            min_width = min_width * 10 + format[i] - '0';
             i++;
-            while (format[i] >= '0' && format[i] <= '9') {
-                min_width = min_width * 10 + format[i] - '0';
-                i++;
-            }
         }
         switch (format[i]) {
         case '%':
@@ -106,6 +104,7 @@ void vsnprintf(char *buf, int bufsize, const char *format, va_list args)
     }
 done:
     buf[pos < (unsigned int)bufsize ? pos : (unsigned int)bufsize - 1] = '\0';
+    return (int)pos;
 }
 
 int printf(const char *format, ...)
@@ -138,7 +137,7 @@ int sprintf(char *str, const char *format, ...)
     return strlen(str);
 }
 
-int snprintf(char *str, int size, const char *format, ...)
+int snprintf(char *str, size_t size, const char *format, ...)
 {
     va_list args;
     va_start(args, format);
@@ -165,7 +164,8 @@ int putchar(int c)
 int getchar(void)
 {
     char c;
-    sys_read(&c, 1);
+    int n = sys_read(&c, 1);
+    if (n <= 0) return EOF;
     return (int)(unsigned char)c;
 }
 
@@ -220,7 +220,7 @@ size_t fread(void *ptr, size_t size, size_t nmemb, FILE *fp)
 
 size_t fwrite(const void *ptr, size_t size, size_t nmemb, FILE *fp)
 {
-    if (!fp || fp->fd < 0) return 0;
+    if (!fp || fp->fd < 0 || size == 0 || nmemb == 0) return 0;
     int total = size * nmemb;
     int n = sys_write_fd(fp->fd, (const char *)ptr, total);
     if (n < 0) {
