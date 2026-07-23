@@ -21,6 +21,13 @@ int get_mode(char *modes)
 int fopen(char *path, char *modes)
 {
     int modes_mask = get_mode(modes);
+
+    fs_node_t *node = get_node(path, root_dir);
+    if (!node && (modes_mask & (FILE_WRITE | FILE_APPEND)))
+        node = create_node(path, root_dir);
+    if (!node)
+        return -1;
+
     int free_id = 3;
     for (int i = 3; i < MAX_FILES; i++)
     {
@@ -33,7 +40,7 @@ int fopen(char *path, char *modes)
     if (current_process->files_open[free_id])
         free(current_process->files_open[free_id]);
     current_process->files_open[free_id] = malloc(sizeof(FILE));
-    current_process->files_open[free_id]->file = get_node(path, root_dir);
+    current_process->files_open[free_id]->file = node;
     current_process->files_open[free_id]->flags = modes_mask;
     return free_id;
 }

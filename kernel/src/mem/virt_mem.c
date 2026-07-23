@@ -24,7 +24,7 @@ void enable_paging()
                          "movl %EAX, %CR0;");
 }
 
-static inline void tlb_flush(void)
+void tlb_flush(void)
 {
     uint32_t cr3;
     __asm__ __volatile__("mov %%cr3, %0" : "=r"(cr3));

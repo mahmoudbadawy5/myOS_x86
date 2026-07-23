@@ -45,7 +45,9 @@ typedef struct pcb {
     int signal_pending;     /* Non-zero = pending signal (e.g. SIGINT=2) */
     uint32_t num_children;  /* Number of live children */
     char proc_name[20];
-    uint32_t kernel_stack_alloc; /* Base of malloc'd kernel stack */
+    uint32_t kernel_stack_alloc; /* Base of malloc'd kernel stack (for free) */
+    uint32_t kernel_stack_bottom; /* Lowest mapped page of kernel stack */
+    char cwd[256];               /* Current working directory */
 } pcb_t;
 
 void init_multitasking(void);
@@ -62,3 +64,4 @@ void kill_children_of(uint32_t parent_pid);
 void process_cleanup_child(pcb_t *child);
 
 extern pcb_t *current_process;
+extern pcb_t process_table[];

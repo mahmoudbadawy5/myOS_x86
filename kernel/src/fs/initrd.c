@@ -16,12 +16,19 @@ uint32_t initrd_read_fs(fs_node_t *node, uint32_t size, uint32_t units, uint8_t 
 {
     if ((node->flags & FS_DIRECTORY) == FS_DIRECTORY)
         return 0;
-    for (int i = 0; i < size * units; i++)
+    if (size == 0 || units == 0)
+        return 0;
+    uint32_t total = size * units;
+    if (node->seek_offset >= node->size)
+        return 0;
+    if (node->seek_offset + total > node->size)
+        total = node->size - node->seek_offset;
+    for (uint32_t i = 0; i < total; i++)
     {
         buffer[i] = *(char *)(node->impl + node->seek_offset + i);
     }
-    node->seek_offset += size * units;
-    return units;
+    node->seek_offset += total;
+    return total / size ? total / size : (total > 0 ? 1 : 0);
 }
 
 void initrd_seek_fs(fs_node_t *node, uint32_t offset, uint8_t type)
@@ -75,6 +82,7 @@ fs_node_t *initrd_finddir_fs(fs_node_t *node, char *name)
 fs_node_t *initrd_loadfile_fs_node(char *name, uint32_t start, uint32_t size)
 {
     fs_node_t *file = malloc(sizeof(fs_node_t));
+    memset((uint8_t *)file, 0, sizeof(fs_node_t));
     file->flags = FS_FILE;
     strcpy(file->name, name);
     file->impl = start + initrd_location;
@@ -88,6 +96,7 @@ fs_node_t *initrd_loadfile_fs_node(char *name, uint32_t start, uint32_t size)
 fs_node_t *initrd_loaddir_fs_node(char *name, uint32_t start)
 {
     fs_node_t *dir = malloc(sizeof(fs_node_t));
+    memset((uint8_t *)dir, 0, sizeof(fs_node_t));
     dir->flags = FS_DIRECTORY;
     strcpy(dir->name, name);
     dir->impl = start + initrd_location;

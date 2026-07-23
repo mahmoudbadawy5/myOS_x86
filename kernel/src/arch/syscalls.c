@@ -1,6 +1,7 @@
 #include <types.h>
 #include <stdio.h>
 #include <string.h>
+#include <arch.h>
 #include <arch/syscalls.h>
 #include <idt.h>
 #include <proc/process.h>
@@ -10,6 +11,89 @@
 #include <mem/vmm.h>
 #include <mem/malloc.h>
 #include <fs/pipe.h>
+
+/* Validate that a pointer lies in userspace (below kernel base) */
+static inline int is_user_ptr(const void *p)
+{
+    return (uint32_t)p < KERNEL_VIRTUAL_BASE && p != 0;
+}
+
+void resolve_path(const char *user_path, char *buf, int buf_size)
+{
+    if (!user_path || !buf || buf_size <= 0) {
+        if (buf && buf_size > 0) buf[0] = '\0';
+        return;
+    }
+
+    /* Copy user path to kernel */
+    char path[256];
+    int len = 0;
+    while (user_path[len] && len < 255) {
+        path[len] = user_path[len];
+        len++;
+    }
+    path[len] = '\0';
+
+    /* Build absolute path: start with cwd if relative */
+    char abs[256];
+    int ai = 0;
+    if (path[0] != '/') {
+        char *cwd = current_process->cwd;
+        while (cwd[ai] && ai < 254)
+            abs[ai] = cwd[ai], ai++;
+        if (ai > 0 && abs[ai - 1] != '/')
+            abs[ai++] = '/';
+    }
+    int pi = 0;
+    while (path[pi] && ai < 254)
+        abs[ai++] = path[pi++];
+    abs[ai] = '\0';
+
+    /* Normalize: resolve . and .. */
+    char norm[256];
+    int ni = 0;
+    int i = 0;
+    while (abs[i]) {
+        /* Skip slashes */
+        if (abs[i] == '/') {
+            i++;
+            continue;
+        }
+        /* Find end of component */
+        int start = i;
+        while (abs[i] && abs[i] != '/')
+            i++;
+        int clen = i - start;
+
+        if (clen == 1 && abs[start] == '.') {
+            /* Skip . */
+        } else if (clen == 2 && abs[start] == '.' && abs[start + 1] == '.') {
+            /* Go up: remove last component */
+            if (ni > 0) {
+                ni--; /* remove trailing slash */
+                while (ni > 0 && norm[ni - 1] != '/')
+                    ni--;
+            }
+        } else {
+            if (ni < 255)
+                norm[ni++] = '/';
+            for (int j = start; j < i && ni < 255; j++)
+                norm[ni++] = abs[j];
+        }
+    }
+    if (ni == 0) {
+        norm[ni++] = '/';
+    }
+    norm[ni] = '\0';
+
+    /* Copy to output */
+    int ci = 0;
+    while (norm[ci] && ci < buf_size - 1) {
+        buf[ci] = norm[ci];
+        ci++;
+    }
+    buf[ci] = '\0';
+}
 
 int32_t (*syscalls[MAX_SYSCALLS])(struct regs *) = {
     syscall_test0,
@@ -28,6 +112,10 @@ int32_t (*syscalls[MAX_SYSCALLS])(struct regs *) = {
     syscall_kill,
     syscall_getpid,
     syscall_lseek,
+    syscall_readdir,
+    syscall_stat,
+    syscall_getcwd,
+    syscall_chdir,
 };
 
 void init_syscalls(void)
@@ -57,7 +145,9 @@ int32_t syscall_test1(struct regs *regs)
 
 int32_t syscall_open(struct regs *regs)
 {
-    return fopen((char *)regs->ebx, (char *)regs->ecx);
+    char path[256];
+    resolve_path((char *)regs->ebx, path, sizeof(path));
+    return fopen(path, (char *)regs->ecx);
 }
 
 /*
@@ -470,4 +560,132 @@ int32_t syscall_lseek(struct regs *regs)
 
     seek_fs(fp->file, offset, whence);
     return (int32_t)fp->file->seek_offset;
+}
+
+/*
+    readdir — list directory entries.
+    ebx: path string (user space)
+    ecx: pointer to user buffer (char names[][256])
+    edx: max entries
+    Returns: number of entries, or -1 on error.
+*/
+int32_t syscall_readdir(struct regs *regs)
+{
+    char *path_user = (char *)regs->ebx;
+    char *buf_user = (char *)regs->ecx;
+    uint32_t max_entries = regs->edx;
+
+    if (!is_user_ptr(path_user) || !is_user_ptr(buf_user) || max_entries == 0)
+        return -1;
+
+    char path[256];
+    resolve_path(path_user, path, sizeof(path));
+
+    fs_node_t *node = get_node(path, root_dir);
+    if (!node)
+        return -1;
+
+    dirent_t *dire = readdir_fs(node);
+    if (!dire)
+        return -1;
+
+    uint32_t count = dire->file_count;
+    if (count > max_entries)
+        count = max_entries;
+
+    for (uint32_t i = 0; i < count; i++) {
+        int nlen = 0;
+        while (dire->files[i][nlen] && nlen < 254)
+            nlen++;
+        /* Copy name to user buffer: each entry is 256 bytes */
+        char *dst = buf_user + i * 256;
+        for (int j = 0; j <= nlen; j++)
+            dst[j] = dire->files[i][j];
+    }
+    free(dire->files);
+    free(dire);
+
+    return (int32_t)count;
+}
+
+/*
+    stat — get file info.
+    ebx: path string (user space)
+    ecx: pointer to stat_result in user space: { uint32_t size, uint32_t type }
+    Returns: 0 on success, -1 on error.
+*/
+int32_t syscall_stat(struct regs *regs)
+{
+    char *path_user = (char *)regs->ebx;
+    uint32_t *stat_buf = (uint32_t *)regs->ecx;
+
+    if (!is_user_ptr(path_user) || !is_user_ptr(stat_buf))
+        return -1;
+
+    char path[256];
+    resolve_path(path_user, path, sizeof(path));
+
+    fs_node_t *node = get_node(path, root_dir);
+    if (!node)
+        return -1;
+
+    stat_buf[0] = node->size;
+    stat_buf[1] = (node->flags & FS_DIRECTORY) ? 1 : 0;
+
+    return 0;
+}
+
+/*
+    getcwd — get current working directory.
+    ebx: buffer pointer (user space)
+    ecx: buffer size
+    Returns: 0 on success, -1 on error.
+*/
+int32_t syscall_getcwd(struct regs *regs)
+{
+    char *buf_user = (char *)regs->ebx;
+    uint32_t buf_size = regs->ecx;
+
+    if (!is_user_ptr(buf_user) || buf_size == 0)
+        return -1;
+
+    char *cwd = current_process->cwd;
+    int len = 0;
+    while (cwd[len] && len < (int)buf_size - 1)
+        len++;
+    for (int i = 0; i <= len; i++)
+        buf_user[i] = cwd[i];
+
+    return 0;
+}
+
+/*
+    chdir — change current working directory.
+    ebx: path string (user space)
+    Returns: 0 on success, -1 on error.
+*/
+int32_t syscall_chdir(struct regs *regs)
+{
+    char *path_user = (char *)regs->ebx;
+    if (!is_user_ptr(path_user))
+        return -1;
+
+    char path[256];
+    resolve_path(path_user, path, sizeof(path));
+
+    fs_node_t *node = get_node(path, root_dir);
+    if (!node)
+        return -1;
+    if (!(node->flags & FS_DIRECTORY))
+        return -1;
+
+    /* Store resolved absolute path as cwd */
+    int i = 0;
+    while (path[i] && i < 254) {
+        current_process->cwd[i] = path[i];
+        i++;
+    }
+    current_process->cwd[i] = '\0';
+
+    return 0;
 }

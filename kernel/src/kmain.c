@@ -313,6 +313,11 @@ void kmain(unsigned long magic, multiboot_info_t *mbd)
         mnt->flags = FS_DIRECTORY;
         mount_dir(mnt, fat12_root);
         initrd_set_mount_point(mnt);
+        mount_entry_t *entry = malloc(sizeof(mount_entry_t));
+        strcpy(entry->name, "mnt");
+        entry->node = mnt;
+        entry->next = root_dir->mounts;
+        root_dir->mounts = entry;
     }
     printf("\x1b\x02OK\x1b\x0F]\n");
 

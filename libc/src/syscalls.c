@@ -31,7 +31,7 @@ int sys_read(void *buf, int len)
 int sys_read_fd(int fd, void *buf, int len)
 {
     int ret;
-    __asm__ __volatile__("int $0x80" : "=a"(ret) : "a"(3), "b"(buf), "c"(fd), "d"(len), "S"(0) : "memory", "cc");
+    __asm__ __volatile__("int $0x80" : "=a"(ret) : "a"(3), "b"(buf), "c"(1), "d"(len), "S"(fd) : "memory", "cc");
     return ret;
 }
 
@@ -45,7 +45,7 @@ int sys_write(const char *buf, int len)
 int sys_write_fd(int fd, const char *buf, int len)
 {
     int ret;
-    __asm__ __volatile__("int $0x80" : "=a"(ret) : "a"(4), "b"(buf), "c"(fd), "d"(len), "S"(1) : "memory", "cc");
+    __asm__ __volatile__("int $0x80" : "=a"(ret) : "a"(4), "b"(buf), "c"(1), "d"(len), "S"(fd) : "memory", "cc");
     return ret;
 }
 
@@ -115,5 +115,33 @@ int sys_lseek(int fd, int offset, int whence)
 {
     int ret;
     __asm__ __volatile__("int $0x80" : "=a"(ret) : "a"(15), "b"(fd), "c"(offset), "d"(whence) : "memory", "cc");
+    return ret;
+}
+
+int sys_readdir(const char *path, char *buf, int max_entries)
+{
+    int ret;
+    __asm__ __volatile__("int $0x80" : "=a"(ret) : "a"(16), "b"(path), "c"(buf), "d"(max_entries) : "memory", "cc");
+    return ret;
+}
+
+int sys_stat(const char *path, unsigned int *stat_buf)
+{
+    int ret;
+    __asm__ __volatile__("int $0x80" : "=a"(ret) : "a"(17), "b"(path), "c"(stat_buf) : "memory", "cc");
+    return ret;
+}
+
+int sys_getcwd(char *buf, unsigned int size)
+{
+    int ret;
+    __asm__ __volatile__("int $0x80" : "=a"(ret) : "a"(18), "b"(buf), "c"(size) : "memory", "cc");
+    return ret;
+}
+
+int sys_chdir(const char *path)
+{
+    int ret;
+    __asm__ __volatile__("int $0x80" : "=a"(ret) : "a"(19), "b"(path) : "memory", "cc");
     return ret;
 }

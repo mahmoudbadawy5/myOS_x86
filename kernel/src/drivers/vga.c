@@ -68,6 +68,11 @@ void putch(char c)
         col_next = 1;
         return;
     }
+    if (c == 0x0C)
+    {
+        cls();
+        return;
+    }
     if (c == 0x08)
     {
         if (csr_x != 0)

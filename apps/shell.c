@@ -1,11 +1,12 @@
 #include <test.h>
+#include <syscalls.h>
 
 #define LINE_MAX 256
 #define MAX_ARGS 16
 
 void print_prompt(void)
 {
-    print("myOS> ");
+    print("\x1b\x0FmyOS> ");
 }
 
 int read_line(char *buf, int max)
@@ -80,11 +81,29 @@ void run_command(int argc, char **args)
         print("Available commands:\n");
         print("  help    - Show this help\n");
         print("  clear   - Clear the screen\n");
+        print("  cd      - Change directory\n");
+        print("  pwd     - Print working directory\n");
+        print("  ls      - List directory\n");
+        print("  cat     - Print file contents\n");
+        print("  touch   - Create a file\n");
         print("  <prog>  - Run a program\n");
     }
-    else if (strcmp(args[0], "clear") == 0)
+    else     if (strcmp(args[0], "clear") == 0)
     {
-        print("\x1b\x40");
+        print("\x1b\x0F\x0C");
+    }
+    else if (strcmp(args[0], "cd") == 0)
+    {
+        if (argc < 2) {
+            /* cd with no args goes to / */
+            sys_chdir("/");
+        } else {
+            if (sys_chdir(args[1]) != 0) {
+                print("cd: ");
+                print(args[1]);
+                print(": no such directory\n");
+            }
+        }
     }
     else
     {
@@ -98,9 +117,6 @@ void run_command(int argc, char **args)
         }
         cmdline[pos] = '\0';
 
-        print("Spawning: ");
-        print(args[0]);
-        print("\n");
         spawn(cmdline);
         wait();
     }
@@ -111,7 +127,7 @@ int main(void)
     static char line[LINE_MAX];
     static char *args[MAX_ARGS];
 
-    print("\x1b\x40");
+    print("\x1b\x0F\x0C");
     print("myOS Shell v0.1\n");
 
     while (1)
@@ -122,6 +138,7 @@ int main(void)
             int argc = parse_args(line, args);
             if (argc > 0)
                 run_command(argc, args);
+            print("\x1b\x0F");
         }
     }
 }

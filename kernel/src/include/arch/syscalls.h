@@ -3,7 +3,7 @@
 #include <types.h>
 #include <isr.h>
 
-#define MAX_SYSCALLS 16
+#define MAX_SYSCALLS 20
 
 void init_syscalls(void);
 int32_t syscall_test0(struct regs *regs);
@@ -22,7 +22,14 @@ int32_t syscall_pipe(struct regs *regs);
 int32_t syscall_kill(struct regs *regs);
 int32_t syscall_getpid(struct regs *regs);
 int32_t syscall_lseek(struct regs *regs);
+int32_t syscall_readdir(struct regs *regs);
+int32_t syscall_stat(struct regs *regs);
+int32_t syscall_getcwd(struct regs *regs);
+int32_t syscall_chdir(struct regs *regs);
 
 // Defined in syscalls_asm.asm
 
 extern void handle_syscalls();
+
+/* Helper: copies a user path into buf, prepending cwd if relative */
+void resolve_path(const char *user_path, char *buf, int buf_size);

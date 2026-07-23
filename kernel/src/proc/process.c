@@ -12,7 +12,7 @@
 #include <isr.h>
 #include <tss.h>
 
-static pcb_t process_table[MAX_PROCESSES];
+pcb_t process_table[MAX_PROCESSES];
 static uint32_t next_pid = 1;
 static uint32_t num_processes = 0, cur_proccess_id = -1;
 
@@ -134,9 +134,27 @@ void create_process(const char *app_path, uint32_t parent_pid, int argc, const c
     pcb->files_open[1]->flags = FILE_WRITE;
     for(int i=0;i<19;i++) pcb->proc_name[i] = kernel_path[i];
     pcb->proc_name[19]='\0';
+    pcb->cwd[0] = '/';
+    pcb->cwd[1] = '\0';
+
+    /* Inherit cwd from parent */
+    if (parent_pid != 0) {
+        for (uint32_t j = 0; j < num_processes; j++) {
+            if (process_table[j].pid == parent_pid) {
+                int ci = 0;
+                while (process_table[j].cwd[ci] && ci < 254) {
+                    pcb->cwd[ci] = process_table[j].cwd[ci];
+                    ci++;
+                }
+                pcb->cwd[ci] = '\0';
+                break;
+            }
+        }
+    }
 
     uint32_t kstack_virt = (uint32_t) malloc(KERNEL_STACK_SIZE);
     pcb->kernel_stack_alloc = kstack_virt;
+    pcb->kernel_stack_bottom = kstack_virt;
 
     uint32_t kstack_base = kstack_virt + KERNEL_STACK_SIZE;
     uint32_t iret_frame = (kstack_base - 32) & ~0xF;
