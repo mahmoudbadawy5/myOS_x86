@@ -445,9 +445,37 @@ pcb_t *fork_process(pcb_t *parent, struct regs *regs)
 
     child->regs.cr3 = (uint32_t)child_dir;
 
-    /* Clone register state */
+    /* Build a trap frame on the child's OWN kernel stack.
+     * The non-first-run path in switch_to_process loads esp from
+     * child->regs.esp and pops the trap frame. We must NOT point
+     * it at the parent's kernel stack (copying parent->regs.esp
+     * would do that), so we construct a fresh frame here with EAX=0. */
+    struct regs *tf = (struct regs *)(child->kernel_stack_top - sizeof(struct regs));
+    tf->gs      = regs->gs;
+    tf->fs      = regs->fs;
+    tf->es      = regs->es;
+    tf->ds      = regs->ds;
+    tf->edi     = regs->edi;
+    tf->esi     = regs->esi;
+    tf->ebp     = regs->ebp;
+    tf->esp     = regs->esp;    /* kernel esp (ignored by popa) */
+    tf->ebx     = regs->ebx;
+    tf->edx     = regs->edx;
+    tf->ecx     = regs->ecx;
+    tf->eax     = 0;            /* fork returns 0 in child */
+    tf->int_no  = regs->int_no;
+    tf->err_code= regs->err_code;
+    tf->eip     = regs->eip;    /* return address after int $0x80 */
+    tf->cs      = regs->cs;     /* 0x1B user code */
+    tf->eflags  = regs->eflags;
+    tf->useresp = regs->useresp;/* parent's user stack pointer */
+    tf->ss      = regs->ss;     /* 0x23 user data */
+
+    /* Copy remaining register state (cr3 set separately below) */
     child->regs = parent->regs;
-    child->regs.eax = 0; /* fork return value in child */
+    child->regs.esp = (uint32_t)tf;  /* point to child's own trap frame */
+    child->regs.eax = 0;
+    child->regs.cr3 = (uint32_t)child_dir;  /* restore CR3 overwritten by struct copy */
 
     /* Clone VMA list (deep copy) */
     child->memory_regions = NULL;

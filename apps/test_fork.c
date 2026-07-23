@@ -48,7 +48,7 @@ int main(void)
 
     if (child_pid == 0) {
         /* Child */
-        printf("[child] I am PID %d, running file I/O test\n", sys_getpid());
+        printf("[child] I am PID %d, fork returned %d\n", sys_getpid(), child_pid);
         test_file_io();
         printf("[child] Done\n");
         sys_exit(0);
