@@ -59,3 +59,14 @@ char *strcpy(char *destination, const char *source)
     destination[i] = '\0';
     return destination;
 }
+
+int memcmp(const void *s1, const void *s2, int n)
+{
+    const unsigned char *a = (const unsigned char *)s1;
+    const unsigned char *b = (const unsigned char *)s2;
+    for (int i = 0; i < n; i++) {
+        if (a[i] != b[i])
+            return a[i] - b[i];
+    }
+    return 0;
+}

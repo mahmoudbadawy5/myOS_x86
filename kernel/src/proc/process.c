@@ -38,7 +38,74 @@ void init_multitasking(void)
     num_processes = 0;
 }
 
-void create_process(const char *app_path, uint32_t parent_pid)
+/* Shared by create_process and exec: clone page dir, load ELF, build argv stack. */
+int load_program(pcb_t *proc, const char *path, int argc, const char **argv)
+{
+    uint32_t old_cr3;
+    __asm__ __volatile__("mov %%cr3, %0" : "=r"(old_cr3));
+    uint32_t *new_dir = vmm_clone_directory();
+    set_page_dir(new_dir);
+
+    memset((unsigned char *)&proc->regs, 0, sizeof(registers_t));
+    proc->regs.cr3 = (uint32_t)new_dir;
+    proc->regs.eflags = 0x202;
+    proc->regs.cs = 0x1B;
+    proc->regs.ds = 0x23;
+    proc->regs.es = 0x23;
+    proc->regs.fs = 0x23;
+    proc->regs.gs = 0x23;
+    proc->regs.ss = 0x23;
+
+    if (load_elf(proc, path) != 0) {
+        set_page_dir((uint32_t *)old_cr3);
+        vmm_free_directory(new_dir);
+        return -1;
+    }
+
+    if (argc > 0 && argv) {
+        uint32_t stack_top = USER_STACK_TOP - 16;
+
+        uint32_t total_str_len = 0;
+        for (int a = 0; a < argc; a++) {
+            const char *s = argv[a];
+            uint32_t slen = 0;
+            while (s[slen]) slen++;
+            total_str_len += slen + 1;
+        }
+
+        uint32_t str_area = stack_top - total_str_len;
+        str_area &= ~3;
+
+        uint32_t argv_ptrs_size = (argc + 3) * 4;
+        uint32_t esp = str_area - argv_ptrs_size;
+        esp &= ~3;
+
+        uint32_t *ustack = (uint32_t *)esp;
+        ustack[0] = argc;
+
+        uint32_t str_off = str_area;
+        for (int a = 0; a < argc; a++) {
+            ustack[1 + a] = str_off;
+            const char *s = argv[a];
+            uint32_t slen = 0;
+            while (s[slen]) slen++;
+            slen++;
+            memcpy((void *)str_off, s, slen);
+            str_off += slen;
+        }
+        ustack[1 + argc] = 0;
+        ustack[2 + argc] = 0;
+
+        proc->regs.esp = esp;
+        uint32_t *frame = (uint32_t *)proc->kernel_stack_top;
+        frame[3] = esp;
+    }
+
+    set_page_dir((uint32_t *)old_cr3);
+    return 0;
+}
+
+void create_process(const char *app_path, uint32_t parent_pid, int argc, const char **argv)
 {
     if (num_processes >= MAX_PROCESSES)
         return;
@@ -86,28 +153,7 @@ void create_process(const char *app_path, uint32_t parent_pid)
         }
     }
 
-    uint32_t old_cr3;
-    __asm__ __volatile__("mov %%cr3, %0" : "=r"(old_cr3));
-    uint32_t *new_dir = vmm_clone_directory();
-    set_page_dir(new_dir);
-
-    memset((unsigned char *)&pcb->regs, 0, sizeof(registers_t));
-    pcb->regs.cr3 = (uint32_t)new_dir;
-    pcb->regs.eflags = 0x202;
-    pcb->regs.cs = 0x1B;
-    pcb->regs.ds = 0x23;
-    pcb->regs.es = 0x23;
-    pcb->regs.fs = 0x23;
-    pcb->regs.gs = 0x23;
-    pcb->regs.ss = 0x23;
-
-
-    if(load_elf(pcb, kernel_path) != 0) {
-        set_page_dir((uint32_t *)old_cr3);
-        vmm_free_directory(new_dir);
-        free(pcb->files_open[0]);
-        free(pcb->files_open[1]);
-        free((void *)kstack_virt);
+    if (load_program(pcb, kernel_path, argc, argv) != 0) {
         /* Undo parent's child count */
         if (parent_pid != 0) {
             for (uint32_t j = 0; j < num_processes; j++) {
@@ -117,9 +163,12 @@ void create_process(const char *app_path, uint32_t parent_pid)
                 }
             }
         }
+        /* Free allocations from create_process */
+        free(pcb->files_open[0]);
+        free(pcb->files_open[1]);
+        free((void *)pcb->kernel_stack_alloc);
         return;
     }
-    set_page_dir((uint32_t *)old_cr3);
 
     pcb->state = PROCESS_STATE_NEW;
     num_processes++;

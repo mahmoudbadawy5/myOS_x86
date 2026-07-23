@@ -8,3 +8,8 @@ unsigned int exit();
 unsigned int sbrk(unsigned int increament);
 unsigned int spawn(const char *path);
 unsigned int wait();
+unsigned int exec(const char *cmdline);
+int dup(int fd);
+int pipe(int fds[2]);
+int kill(int pid, int signal);
+int getpid(void);

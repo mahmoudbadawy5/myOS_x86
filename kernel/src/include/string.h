@@ -6,6 +6,7 @@ unsigned char *memset(unsigned char *dest, unsigned char val, int count);
 unsigned short *memsetw(unsigned short *dest, unsigned short val, int count);
 int strlen(const char *str);
 int strcmp(const char *str1, const char *str2);
+int memcmp(const void *s1, const void *s2, int n);
 char* strcpy(char* destination, const char* source);
 
 #endif

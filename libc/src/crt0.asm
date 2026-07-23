@@ -4,11 +4,23 @@ extern main
 section .text._start    ; Use this specific name
 
 _start:
-    ; 2. Call main
+    ; Stack layout: [argc] [argv[0]] [argv[1]] ... [argv[n]] [NULL] [NULL]
+    pop eax             ; eax = argc
+    mov ebx, esp        ; ebx = pointer to argv[0]
+
+    ; Push envp = NULL (simplified, no envp support yet)
+    push dword 0
+
+    ; Push argv
+    push ebx
+
+    ; Push argc
+    push eax
+
     call main
 
-    ; 3. Exit System Call
-    mov eax, 5          ; Assuming 1 is sys_exit
+    ; Exit System Call
+    mov eax, 5
     int 0x80
     
     jmp $               ; Loop forever if exit fails

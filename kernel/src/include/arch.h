@@ -6,5 +6,7 @@
 
 extern unsigned char inportb(unsigned short _port);
 extern void outportb(unsigned short _port, unsigned char _data);
+extern unsigned short inportw(unsigned short _port);
+extern void outportw(unsigned short _port, unsigned short _data);
 
 #endif

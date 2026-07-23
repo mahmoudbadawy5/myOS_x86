@@ -75,3 +75,43 @@ unsigned int wait() {
                          : "a"(9));
     return ret;
 }
+
+unsigned int exec(const char *cmdline) {
+    unsigned int ret;
+    __asm__ __volatile__("int $0x80;"
+                         : "=a"(ret)
+                         : "a"(10), "b"(cmdline));
+    return ret;
+}
+
+int dup(int fd) {
+    int ret;
+    __asm__ __volatile__("int $0x80;"
+                         : "=a"(ret)
+                         : "a"(11), "b"(fd));
+    return ret;
+}
+
+int pipe(int fds[2]) {
+    int ret;
+    __asm__ __volatile__("int $0x80;"
+                         : "=a"(ret)
+                         : "a"(12), "b"(fds));
+    return ret;
+}
+
+int kill(int pid, int signal) {
+    int ret;
+    __asm__ __volatile__("int $0x80;"
+                         : "=a"(ret)
+                         : "a"(13), "b"(pid), "c"(signal));
+    return ret;
+}
+
+int getpid(void) {
+    int ret;
+    __asm__ __volatile__("int $0x80;"
+                         : "=a"(ret)
+                         : "a"(14));
+    return ret;
+}

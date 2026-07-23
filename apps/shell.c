@@ -104,46 +104,28 @@ void run_command(int argc, char **args)
         print("Available commands:\n");
         print("  help    - Show this help\n");
         print("  clear   - Clear the screen\n");
-        print("  echo    - Echo arguments\n");
         print("  <prog>  - Run a program\n");
     }
     else if (strcmp(args[0], "clear") == 0)
     {
         print("\x1b\x40");
     }
-    else if (strcmp(args[0], "echo") == 0)
-    {
-        for (int i = 1; i < argc; i++)
-        {
-            print(args[i]);
-            if (i < argc - 1)
-                print(" ");
-        }
-        print("\n");
-    }
     else
     {
-        int len = strlen(args[0]);
-        char path[128];
-        memset(path, 0, 128);
-        path[0] = '/';
-        for (int i = 0; i < len && i < 125; i++)
-            path[i + 1] = args[0][i];
-
-        int bin_len = len + 5;
-        if (bin_len <= 127)
-        {
-            path[bin_len - 4] = '.';
-            path[bin_len - 3] = 'b';
-            path[bin_len - 2] = 'i';
-            path[bin_len - 1] = 'n';
-            path[bin_len] = '\0';
+        /* Reconstruct full command line from args (parse_args nulled the spaces) */
+        char cmdline[LINE_MAX];
+        int pos = 0;
+        for (int i = 0; i < argc; i++) {
+            if (i > 0) cmdline[pos++] = ' ';
+            int j = 0;
+            while (args[i][j]) cmdline[pos++] = args[i][j++];
         }
+        cmdline[pos] = '\0';
 
         print("Spawning: ");
-        print(path);
+        print(args[0]);
         print("\n");
-        spawn(path);
+        spawn(cmdline);
         wait();
     }
 }

@@ -25,6 +25,7 @@ typedef struct initrd_directory
 extern uint32_t initrd_location;
 
 void init_initrd(uint32_t initrd_start);
+void initrd_set_mount_point(fs_node_t *mnt);
 uint32_t initrd_read_fs(fs_node_t *node, uint32_t size, uint32_t units, uint8_t *buffer);
 void initrd_seek_fs(fs_node_t *node, uint32_t offset, uint8_t type);
 dirent_t *initrd_readdir_fs(fs_node_t *node);

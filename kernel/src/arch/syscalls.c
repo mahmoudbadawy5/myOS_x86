@@ -1,11 +1,15 @@
 #include <types.h>
 #include <stdio.h>
+#include <string.h>
 #include <arch/syscalls.h>
 #include <idt.h>
 #include <proc/process.h>
+#include <proc/elf.h>
 #include <mem/phys_mem.h>
 #include <mem/virt_mem.h>
 #include <mem/vmm.h>
+#include <mem/malloc.h>
+#include <fs/pipe.h>
 
 int32_t (*syscalls[MAX_SYSCALLS])(struct regs *) = {
     syscall_test0,
@@ -18,6 +22,11 @@ int32_t (*syscalls[MAX_SYSCALLS])(struct regs *) = {
     syscall_sbrk,
     syscall_spawn,
     syscall_wait,
+    syscall_exec,
+    syscall_dup,
+    syscall_pipe,
+    syscall_kill,
+    syscall_getpid,
 };
 
 void init_syscalls(void)
@@ -154,8 +163,50 @@ int32_t syscall_sbrk(struct regs *regs)
 
 int32_t syscall_spawn(struct regs *regs)
 {
-    char *path = (char *)regs->ebx;
-    create_process(path, current_process->pid);
+    char *cmdline_user = (char *)regs->ebx;
+
+    /* Copy command line to kernel buffer (user memory may vanish after page switch) */
+    char cmdline[256];
+    int len = 0;
+    while (cmdline_user[len] && len < 255) {
+        cmdline[len] = cmdline_user[len];
+        len++;
+    }
+    cmdline[len] = '\0';
+
+    /* Skip leading spaces */
+    char *p = cmdline;
+    while (*p == ' ') p++;
+
+    /* Parse into argv */
+    const char *argv[16];
+    int argc = 0;
+    while (*p && argc < 15) {
+        argv[argc++] = p;
+        while (*p && *p != ' ') p++;
+        if (*p) {
+            *p = '\0';
+            p++;
+            while (*p == ' ') p++;
+        }
+    }
+
+    if (argc == 0)
+        return -1;
+
+    /* Build path: "/<argv[0]>.bin" */
+    char path[128];
+    path[0] = '/';
+    int i;
+    for (i = 0; argv[0][i] && i < 122; i++)
+        path[i + 1] = argv[0][i];
+    path[i + 1] = '.';
+    path[i + 2] = 'b';
+    path[i + 3] = 'i';
+    path[i + 4] = 'n';
+    path[i + 5] = '\0';
+
+    create_process(path, current_process->pid, argc, argv);
     return 0;
 }
 
@@ -190,4 +241,197 @@ int32_t syscall_wait(struct regs *regs)
 
     /* No children at all */
     return -1;
+}
+
+/*
+    exec — replace current process image with a new program.
+    ebx: pointer to command line string (same format as spawn)
+    Returns: does not return on success (new program runs), -1 on error.
+*/
+int32_t syscall_exec(struct regs *regs)
+{
+    char *cmdline_user = (char *)regs->ebx;
+
+    /* Copy command line to kernel buffer */
+    char cmdline[256];
+    int len = 0;
+    while (cmdline_user[len] && len < 255) {
+        cmdline[len] = cmdline_user[len];
+        len++;
+    }
+    cmdline[len] = '\0';
+
+    char *p = cmdline;
+    while (*p == ' ') p++;
+
+    const char *argv[16];
+    int argc = 0;
+    while (*p && argc < 15) {
+        argv[argc++] = p;
+        while (*p && *p != ' ') p++;
+        if (*p) {
+            *p = '\0';
+            p++;
+            while (*p == ' ') p++;
+        }
+    }
+
+    if (argc == 0)
+        return -1;
+
+    /* Build path: "/<argv[0]>.bin" */
+    char path[128];
+    path[0] = '/';
+    int i;
+    for (i = 0; argv[0][i] && i < 122; i++)
+        path[i + 1] = argv[0][i];
+    path[i + 1] = '.';
+    path[i + 2] = 'b';
+    path[i + 3] = 'i';
+    path[i + 4] = 'n';
+    path[i + 5] = '\0';
+
+    pcb_t *proc = current_process;
+
+    /* Free old address space */
+    uint32_t *saved_dir = vmm_get_directory();
+    switch_to_kernel_page_dir();
+    vmm_free_directory((uint32_t *)proc->regs.cr3);
+    set_page_dir(saved_dir);
+
+    /* Free old VMA regions */
+    vma_t *vma = proc->memory_regions;
+    while (vma) {
+        vma_t *next = vma->next;
+        free(vma);
+        vma = next;
+    }
+    proc->memory_regions = 0;
+
+    /* Free old files (keep stdin/stdout) */
+    for (int i = 2; i < MAX_FILES; i++) {
+        if (proc->files_open[i]) {
+            free(proc->files_open[i]);
+            proc->files_open[i] = 0;
+        }
+    }
+
+    /* Set up new page directory + load ELF + argv — shared helper */
+    if (load_program(proc, path, argc, argv) != 0) {
+        /* Load failed — process has no valid address space; terminate it */
+        proc->state = PROCESS_STATE_TERMINATED;
+        return -1;
+    }
+
+    return 0;
+}
+
+/*
+    dup — duplicate a file descriptor.
+    ebx: old fd
+    Returns: new fd, or -1 on error.
+*/
+int32_t syscall_dup(struct regs *regs)
+{
+    uint32_t old_fd = regs->ebx;
+    if (old_fd >= MAX_FILES)
+        return -1;
+    FILE *fp = current_process->files_open[old_fd];
+    if (!fp)
+        return -1;
+
+    /* Find first free slot */
+    for (uint32_t i = 0; i < MAX_FILES; i++) {
+        if (!current_process->files_open[i]) {
+            current_process->files_open[i] = fp;
+            return i;
+        }
+    }
+    return -1; /* no free slots */
+}
+
+/*
+    pipe — create a pipe for inter-process communication.
+    ebx: pointer to 2-element int array in user space
+    Array[0] = read fd, Array[1] = write fd
+    Returns: 0 on success, -1 on error.
+*/
+int32_t syscall_pipe(struct regs *regs)
+{
+    int *fds = (int *)regs->ebx;
+
+    FILE *read_fp, *write_fp;
+    if (pipe_create(&read_fp, &write_fp) != 0)
+        return -1;
+
+    /* Find two free fd slots */
+    int read_fd = -1, write_fd = -1;
+    for (uint32_t i = 3; i < MAX_FILES; i++) {
+        if (!current_process->files_open[i]) {
+            if (read_fd == -1)
+                read_fd = i;
+            else {
+                write_fd = i;
+                break;
+            }
+        }
+    }
+    if (read_fd == -1 || write_fd == -1) {
+        /* read_node->ptr and write_node->ptr share the same pipe_buf_t — free only once */
+        free(read_fp->file->ptr);
+        free(read_fp->file);
+        free(write_fp->file);
+        free(read_fp);
+        free(write_fp);
+        return -1;
+    }
+
+    current_process->files_open[read_fd] = read_fp;
+    current_process->files_open[write_fd] = write_fp;
+
+    /* Copy fds to user space */
+    uint32_t *old_dir = vmm_get_directory();
+    set_page_dir((uint32_t *)current_process->regs.cr3);
+    fds[0] = read_fd;
+    fds[1] = write_fd;
+    set_page_dir(old_dir);
+
+    return 0;
+}
+
+/*
+    kill — send a signal to a process.
+    ebx: target pid
+    ecx: signal number
+    Returns: 0 on success, -1 on error.
+*/
+int32_t syscall_kill(struct regs *regs)
+{
+    uint32_t target_pid = regs->ebx;
+    uint32_t signal = regs->ecx;
+
+    if (target_pid == 0 || signal == 0)
+        return -1;
+
+    pcb_t *target = get_process_by_pid(target_pid);
+    if (!target)
+        return -1;
+
+    if (target->state == PROCESS_STATE_TERMINATED)
+        return -1;
+
+    target->signal_pending = signal;
+    return 0;
+}
+
+/*
+    getpid — get current process ID.
+    Returns: current process PID.
+*/
+int32_t syscall_getpid(struct regs *regs)
+{
+    (void)regs;
+    if (!current_process)
+        return 0;
+    return current_process->pid;
 }
