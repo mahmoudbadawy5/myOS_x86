@@ -25,8 +25,12 @@ static void print_uint(char *buf, unsigned int *pos, unsigned int limit, unsigne
             val /= base;
         }
     }
-    while (len < min_width && *pos < limit - 1)
+    int zeros = min_width - len;
+    if (zeros < 0) zeros = 0;
+    while (zeros > 0 && *pos < limit - 1) {
         buf[(*pos)++] = '0';
+        zeros--;
+    }
     for (int i = len - 1; i >= 0 && *pos < limit - 1; i--)
         buf[(*pos)++] = tmp[i];
 }

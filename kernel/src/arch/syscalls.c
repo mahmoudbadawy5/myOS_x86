@@ -139,9 +139,6 @@ int32_t syscall_sbrk(struct regs *regs)
     uint32_t old_brk = heap->end;
     uint32_t new_brk = old_brk + increment;
 
-    uint32_t *old_dir = vmm_get_directory();
-    set_page_dir((uint32_t*) current_process->regs.cr3);
-
     uint32_t page = ALIGN_PAGE(old_brk);
     uint32_t last_mapped = old_brk;
     while (page < new_brk) {
@@ -156,7 +153,6 @@ int32_t syscall_sbrk(struct regs *regs)
     }
 
     heap->end = last_mapped;
-    set_page_dir(old_dir);
     if (last_mapped < new_brk)
         return -1;
     return old_brk;
@@ -391,11 +387,8 @@ int32_t syscall_pipe(struct regs *regs)
     current_process->files_open[write_fd] = write_fp;
 
     /* Copy fds to user space */
-    uint32_t *old_dir = vmm_get_directory();
-    set_page_dir((uint32_t *)current_process->regs.cr3);
     fds[0] = read_fd;
     fds[1] = write_fd;
-    set_page_dir(old_dir);
 
     return 0;
 }

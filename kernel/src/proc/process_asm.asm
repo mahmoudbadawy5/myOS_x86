@@ -1,5 +1,8 @@
 [GLOBAL switch_to_process]
 [EXTERN current_process]
+[EXTERN cur_page_dir]
+
+KERNEL_VIRTUAL_BASE         equ 0xC0000000
 
 PCB_OFFSET_PROCESS_STATE    equ 4
 PCB_OFFSET_KERNEL_STACK     equ 8
@@ -42,6 +45,10 @@ switch_to_process:
     ; Switch page directory
     mov ecx, [eax + PCB_OFFSET_CR3]
     mov cr3, ecx
+
+    ; Keep the global C cur_page_dir in sync with the actual cr3 page dir
+    add ecx, KERNEL_VIRTUAL_BASE
+    mov [cur_page_dir], ecx
     
     ; Check if this is the first run BEFORE loading the stack
     cmp dword [eax + PCB_OFFSET_PROCESS_STATE], PROCESS_STATE_NEW
