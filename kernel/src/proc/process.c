@@ -76,7 +76,7 @@ int load_program(pcb_t *proc, const char *path, int argc, const char **argv)
         uint32_t str_area = stack_top - total_str_len;
         str_area &= ~3;
 
-        uint32_t argv_ptrs_size = (argc + 2) * 4;
+        uint32_t argv_ptrs_size = (argc + 3) * 4;
         uint32_t esp = str_area - argv_ptrs_size;
         esp &= ~3;
 
@@ -163,6 +163,10 @@ void create_process(const char *app_path, uint32_t parent_pid, int argc, const c
                 }
             }
         }
+        /* Free allocations from create_process */
+        free(pcb->files_open[0]);
+        free(pcb->files_open[1]);
+        free((void *)pcb->kernel_stack_alloc);
         return;
     }
 

@@ -17,8 +17,8 @@ echo "[FAT12] Adding files from fat12_files/..."
 if [ -d fat12_files ]; then
     for f in fat12_files/*; do
         [ -f "$f" ] || continue
-        echo "  Adding: $(basename $f)"
-        mcopy -i "$IMG" "$f" "::$(basename $f)"
+        echo "  Adding: $(basename "$f")"
+        mcopy -i "$IMG" "$f" "::$(basename "$f")"
     done
 fi
 

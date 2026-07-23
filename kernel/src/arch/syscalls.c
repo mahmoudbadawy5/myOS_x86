@@ -317,8 +317,11 @@ int32_t syscall_exec(struct regs *regs)
     }
 
     /* Set up new page directory + load ELF + argv — shared helper */
-    if (load_program(proc, path, argc, argv) != 0)
+    if (load_program(proc, path, argc, argv) != 0) {
+        /* Load failed — process has no valid address space; terminate it */
+        proc->state = PROCESS_STATE_TERMINATED;
         return -1;
+    }
 
     return 0;
 }
@@ -374,9 +377,9 @@ int32_t syscall_pipe(struct regs *regs)
         }
     }
     if (read_fd == -1 || write_fd == -1) {
+        /* read_node->ptr and write_node->ptr share the same pipe_buf_t — free only once */
         free(read_fp->file->ptr);
         free(read_fp->file);
-        free(write_fp->file->ptr);
         free(write_fp->file);
         free(read_fp);
         free(write_fp);

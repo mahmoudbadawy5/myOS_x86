@@ -147,6 +147,8 @@ bool ata_write_sectors(uint32_t lba, uint32_t count, const uint8_t *buffer)
         uint8_t status = ata_wait_drq(port);
         if (status & ATA_SR_ERR)
             return false;
+        if (!(status & ATA_SR_DRQ))
+            return false;
 
         for (int i = 0; i < 256; i++) {
             uint16_t word = buffer[s * ATA_SECTOR_SIZE + i * 2]

@@ -3,7 +3,7 @@ LD=i686-elf-ld
 CC_FLAGS = -fno-stack-protector -m32 -Wall -O -fstrength-reduce -fomit-frame-pointer -finline-functions -nostdinc -fno-builtin -fno-pie
 
 all_apps_src	:= $(shell find . -maxdepth 1 -name "*.c")
-apps_bins	=  $(patsubst ./%, %.bin, $(all_apps_src:.c=.bin))
+apps_bins	=  $(patsubst ./%.c, %.bin, $(all_apps_src))
 
 
 all: $(apps_bins)

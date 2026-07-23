@@ -13,6 +13,8 @@ initrd: tools/create_initrd.py $(apps)
 	@cp $(apps) initrd/
 	@python tools/create_initrd.py initrd initrd.img
 
+.PHONY: fat12
+
 fat12: tools/create_fat12.sh
 	@bash tools/create_fat12.sh
 

@@ -24,6 +24,20 @@ static int strcasecmp_fat(const char *a, const char *b)
     return *a - *b;
 }
 
+static int fat12_entry_to_name(fat12_dir_entry_t *entry, char *out)
+{
+    int j = 0;
+    for (int k = 0; k < 8 && entry->name[k] != ' '; k++)
+        out[j++] = entry->name[k];
+    if (entry->ext[0] != ' ') {
+        out[j++] = '.';
+        for (int k = 0; k < 3 && entry->ext[k] != ' '; k++)
+            out[j++] = entry->ext[k];
+    }
+    out[j] = '\0';
+    return j;
+}
+
 static uint16_t fat12_get_fat_entry(uint32_t cluster)
 {
     uint32_t offset = cluster + (cluster / 2);
@@ -266,15 +280,7 @@ static void fat12_update_dir_entry(fs_node_t *file_node)
                     continue;
 
                 char entry_name[13];
-                int j = 0;
-                for (int k = 0; k < 8 && entries[i].name[k] != ' '; k++)
-                    entry_name[j++] = entries[i].name[k];
-                if (entries[i].ext[0] != ' ') {
-                    entry_name[j++] = '.';
-                    for (int k = 0; k < 3 && entries[i].ext[k] != ' '; k++)
-                        entry_name[j++] = entries[i].ext[k];
-                }
-                entry_name[j] = '\0';
+                fat12_entry_to_name(&entries[i], entry_name);
 
                 if (strcasecmp_fat(entry_name, ctx.name) == 0) {
                     entries[i].first_cluster = ctx.first_cluster;
@@ -309,15 +315,7 @@ static void fat12_update_dir_entry(fs_node_t *file_node)
                 continue;
 
             char entry_name[13];
-            int j = 0;
-            for (int k = 0; k < 8 && entries[i].name[k] != ' '; k++)
-                entry_name[j++] = entries[i].name[k];
-            if (entries[i].ext[0] != ' ') {
-                entry_name[j++] = '.';
-                for (int k = 0; k < 3 && entries[i].ext[k] != ' '; k++)
-                    entry_name[j++] = entries[i].ext[k];
-            }
-            entry_name[j] = '\0';
+            fat12_entry_to_name(&entries[i], entry_name);
 
             if (strcasecmp_fat(entry_name, ctx.name) == 0) {
                 entries[i].first_cluster = ctx.first_cluster;
@@ -515,15 +513,7 @@ static void readdir_callback(fs_node_t *node, fat12_dir_entry_t *entry, void *ct
     struct readdir_ctx *c = (struct readdir_ctx *)ctx;
 
     char name[13];
-    int j = 0;
-    for (int k = 0; k < 8 && entry->name[k] != ' '; k++)
-        name[j++] = entry->name[k];
-    if (entry->ext[0] != ' ') {
-        name[j++] = '.';
-        for (int k = 0; k < 3 && entry->ext[k] != ' '; k++)
-            name[j++] = entry->ext[k];
-    }
-    name[j] = '\0';
+    int j = fat12_entry_to_name(entry, name);
 
     c->dire->files[c->count] = malloc(j + 1);
     strcpy(c->dire->files[c->count], name);
@@ -562,15 +552,7 @@ static void finddir_callback(fs_node_t *node, fat12_dir_entry_t *entry, void *ct
         return;
 
     char entry_name[13];
-    int j = 0;
-    for (int k = 0; k < 8 && entry->name[k] != ' '; k++)
-        entry_name[j++] = entry->name[k];
-    if (entry->ext[0] != ' ') {
-        entry_name[j++] = '.';
-        for (int k = 0; k < 3 && entry->ext[k] != ' '; k++)
-            entry_name[j++] = entry->ext[k];
-    }
-    entry_name[j] = '\0';
+    fat12_entry_to_name(entry, entry_name);
 
     if (strcasecmp_fat(entry_name, c->name) == 0) {
         c->result = fat12_make_node(entry);
@@ -596,16 +578,7 @@ static fs_node_t *fat12_make_node(fat12_dir_entry_t *entry)
     memset((uint8_t *)node, 0, sizeof(fs_node_t));
 
     char name[13];
-    int i, j = 0;
-
-    for (i = 0; i < 8 && entry->name[i] != ' '; i++)
-        name[j++] = entry->name[i];
-    if (entry->ext[0] != ' ') {
-        name[j++] = '.';
-        for (i = 0; i < 3 && entry->ext[i] != ' '; i++)
-            name[j++] = entry->ext[i];
-    }
-    name[j] = '\0';
+    fat12_entry_to_name(entry, name);
 
     strcpy(node->name, name);
     node->size = entry->file_size;
