@@ -5,6 +5,7 @@
 #include <arch.h>
 
 uint32_t *mem_bitmap;
+static uint16_t ref_counts[MAX_BLOCK_ENTRIES];
 
 void set_block(int id, int val)
 {
@@ -20,6 +21,7 @@ void init_phys_mem(const uint32_t start_address)
 {
     mem_bitmap = (uint32_t *)(start_address + KERNEL_VIRTUAL_BASE);
     memset((uint8_t *)mem_bitmap, 0, MAX_BLOCK_ENTRIES * sizeof(mem_bitmap[0]));
+    memset((uint8_t *)ref_counts, 0, sizeof(ref_counts));
 }
 
 void initialize_memory_region(uint32_t start, uint32_t size)
@@ -78,14 +80,37 @@ uint32_t *alloc_blocks(uint32_t size)
     int start_block = find_first_free_blocks(size);
     if (start_block == -1)
         return NULL;
-    for (int i = 0; i < size; i++)
+    for (int i = 0; i < size; i++) {
         set_block(start_block + i, 0);
+        ref_counts[start_block + i] = 1;
+    }
     return (void *)(start_block * BLOCK_SIZE);
 }
 
 void free_blocks(uint32_t *address, uint32_t size)
 {
     uint32_t start_block = (uint32_t)address / BLOCK_SIZE;
-    for (int i = 0; i < size; i++)
-        set_block(start_block + i, 1);
+    for (int i = 0; i < size; i++) {
+        if (ref_counts[start_block + i] > 1) {
+            ref_counts[start_block + i]--;
+        } else {
+            ref_counts[start_block + i] = 0;
+            set_block(start_block + i, 1);
+        }
+    }
+}
+
+void phys_ref_block(uint32_t *address)
+{
+    uint32_t block = (uint32_t)address / BLOCK_SIZE;
+    if (block < MAX_BLOCK_ENTRIES)
+        ref_counts[block]++;
+}
+
+int phys_get_refcount(uint32_t *address)
+{
+    uint32_t block = (uint32_t)address / BLOCK_SIZE;
+    if (block < MAX_BLOCK_ENTRIES)
+        return ref_counts[block];
+    return 0;
 }

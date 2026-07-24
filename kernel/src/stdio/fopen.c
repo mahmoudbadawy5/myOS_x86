@@ -28,7 +28,7 @@ int fopen(char *path, char *modes)
     if (!node)
         return -1;
 
-    int free_id = 3;
+    int free_id = -1;
     for (int i = 3; i < MAX_FILES; i++)
     {
         if (current_process->files_open[i] == NULL)
@@ -37,9 +37,11 @@ int fopen(char *path, char *modes)
             break;
         }
     }
-    if (current_process->files_open[free_id])
-        free(current_process->files_open[free_id]);
+    if (free_id == -1)
+        return -1; /* all descriptors in use */
     current_process->files_open[free_id] = malloc(sizeof(FILE));
+    if (!current_process->files_open[free_id])
+        return -1;
     current_process->files_open[free_id]->file = node;
     current_process->files_open[free_id]->flags = modes_mask;
     node->refcount++;

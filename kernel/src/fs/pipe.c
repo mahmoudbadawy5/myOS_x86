@@ -6,14 +6,15 @@ static void pipe_close_fn(fs_node_t *node)
 {
     pipe_buf_t *pb = (pipe_buf_t *)node->ptr;
     if (pb) {
-        /* Mark the pointer NULL on both sides so the other side doesn't double-free.
-         * Both read_node->ptr and write_node->ptr point to the same pb. */
-        /* We can't reach the other node from here, so we use a trick:
-         * free only if refcount is 0 (we are the last holder). */
-        if (node->refcount == 0) {
+        /* Both endpoints share the same pipe_buf_t.
+         * Decrement the shared refcount; free the buffer only
+         * when the last endpoint closes. */
+        if (pb->refcount > 0)
+            pb->refcount--;
+        if (pb->refcount == 0) {
             free(pb);
-            node->ptr = 0;
         }
+        node->ptr = 0;
     }
 }
 
@@ -52,8 +53,10 @@ int pipe_create(FILE **read_fp, FILE **write_fp)
     pb->read_pos = 0;
     pb->write_pos = 0;
     pb->count = 0;
+    pb->refcount = 2; /* one for each endpoint */
 
     fs_node_t *read_node = malloc(sizeof(fs_node_t));
+    if (!read_node) { free(pb); return -1; }
     memset((unsigned char *)read_node, 0, sizeof(fs_node_t));
     read_node->flags = FS_PIPE;
     read_node->ptr = (fs_node_t *)pb;
@@ -62,6 +65,7 @@ int pipe_create(FILE **read_fp, FILE **write_fp)
     read_node->refcount = 1;
 
     fs_node_t *write_node = malloc(sizeof(fs_node_t));
+    if (!write_node) { free(read_node); free(pb); return -1; }
     memset((unsigned char *)write_node, 0, sizeof(fs_node_t));
     write_node->flags = FS_PIPE;
     write_node->ptr = (fs_node_t *)pb;
@@ -70,10 +74,12 @@ int pipe_create(FILE **read_fp, FILE **write_fp)
     write_node->refcount = 1;
 
     *read_fp = malloc(sizeof(FILE));
+    if (!*read_fp) { free(write_node); free(read_node); free(pb); return -1; }
     (*read_fp)->flags = FILE_READ;
     (*read_fp)->file = read_node;
 
     *write_fp = malloc(sizeof(FILE));
+    if (!*write_fp) { free(*read_fp); free(write_node); free(read_node); free(pb); return -1; }
     (*write_fp)->flags = FILE_WRITE;
     (*write_fp)->file = write_node;
 

@@ -393,8 +393,20 @@ pcb_t *fork_process(pcb_t *parent, struct regs *regs)
     if (num_processes >= MAX_PROCESSES)
         return NULL;
 
-    /* Find free slot */
-    uint32_t slot = num_processes;
+    /* Find free slot — reuse terminated entries first */
+    int slot = -1;
+    for (uint32_t i = 0; i < num_processes; i++) {
+        if (process_table[i].state == PROCESS_STATE_TERMINATED &&
+            process_table[i].pid != 0) {
+            slot = i;
+            break;
+        }
+    }
+    if (slot == -1) {
+        if (num_processes >= MAX_PROCESSES)
+            return NULL;
+        slot = num_processes;
+    }
     pcb_t *child = &process_table[slot];
 
     /* Clone PCB fields */
@@ -419,6 +431,7 @@ pcb_t *fork_process(pcb_t *parent, struct regs *regs)
 
     /* Allocate new kernel stack */
     uint32_t kstack_virt = (uint32_t)malloc(KERNEL_STACK_SIZE);
+    if (!kstack_virt) return NULL;
     child->kernel_stack_alloc = kstack_virt;
     child->kernel_stack_bottom = kstack_virt;
     uint32_t kstack_base = kstack_virt + KERNEL_STACK_SIZE;
@@ -478,11 +491,13 @@ pcb_t *fork_process(pcb_t *parent, struct regs *regs)
     child->regs.cr3 = (uint32_t)child_dir;  /* restore CR3 overwritten by struct copy */
 
     /* Clone VMA list (deep copy) */
+    int vma_ok = 1;
     child->memory_regions = NULL;
     vma_t *src_vma = parent->memory_regions;
     vma_t *dst_vma_last = NULL;
-    while (src_vma) {
+    while (src_vma && vma_ok) {
         vma_t *new_vma = malloc(sizeof(vma_t));
+        if (!new_vma) { vma_ok = 0; break; }
         new_vma->start = src_vma->start;
         new_vma->end = src_vma->end;
         new_vma->flags = src_vma->flags;
@@ -497,9 +512,11 @@ pcb_t *fork_process(pcb_t *parent, struct regs *regs)
     }
 
     /* Share open files — increment refcount on each node */
-    for (int i = 0; i < MAX_FILES; i++) {
+    int fp_ok = vma_ok;
+    for (int i = 0; i < MAX_FILES && fp_ok; i++) {
         if (parent->files_open[i]) {
             FILE *new_fp = malloc(sizeof(FILE));
+            if (!new_fp) { fp_ok = 0; break; }
             new_fp->flags = parent->files_open[i]->flags;
             new_fp->file = parent->files_open[i]->file;
             if (new_fp->file)
@@ -510,8 +527,15 @@ pcb_t *fork_process(pcb_t *parent, struct regs *regs)
         }
     }
 
+    if (!vma_ok || !fp_ok) {
+        process_cleanup_child(child);
+        parent->num_children--;
+        return NULL;
+    }
+
+    if (slot == (int)num_processes)
+        num_processes++;
     child->state = PROCESS_STATE_READY;
-    num_processes++;
     return child;
 }
 
@@ -532,6 +556,9 @@ void unblock_parent(uint32_t child_pid)
         uint32_t *tf = (uint32_t *)parent->regs.esp;
         tf[11] = child_pid; /* EAX is at offset 44 / sizeof(uint32_t) = 11 */
         parent->state = PROCESS_STATE_READY;
-        process_cleanup_child(child);
+        /* Don't free the active process's stack/page-dir — it's still
+         * running until switch_to_process swaps it out. */
+        if (child != current_process)
+            process_cleanup_child(child);
     }
 }
