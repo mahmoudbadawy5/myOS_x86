@@ -18,6 +18,14 @@ static uint32_t num_processes = 0, cur_proccess_id = -1;
 
 pcb_t *current_process = NULL;
 
+/* Idle loop — runs when no other process is available.
+ * Executes in ring 0 (kernel mode) via IRET with CS=0x08. */
+static void idle_loop(void)
+{
+    for (;;)
+        __asm__ __volatile__("hlt");
+}
+
 pcb_t *get_process_by_pid(uint32_t pid)
 {
     for (uint32_t i = 0; i < num_processes; i++) {
@@ -36,6 +44,52 @@ void init_multitasking(void)
     current_process = NULL;
     next_pid = 1;
     num_processes = 0;
+
+    /* Create idle process (PID 0) — runs a HLT loop in ring 0.
+     * Always READY; scheduler picks it when no other process is available. */
+    pcb_t *idle = &process_table[0];
+    idle->pid = 0;
+    idle->state = PROCESS_STATE_NEW;
+    idle->parent_id = 0;
+    idle->signal_pending = 0;
+    idle->num_children = 0;
+    idle->proc_name[0] = 'i';
+    idle->proc_name[1] = 'd';
+    idle->proc_name[2] = 'l';
+    idle->proc_name[3] = 'e';
+    idle->proc_name[4] = '\0';
+    idle->cwd[0] = '/';
+    idle->cwd[1] = '\0';
+
+    /* Allocate kernel stack for idle */
+    uint32_t kstack_virt = (uint32_t)malloc(KERNEL_STACK_SIZE);
+    idle->kernel_stack_alloc = kstack_virt;
+    idle->kernel_stack_bottom = kstack_virt;
+    uint32_t kstack_base = kstack_virt + KERNEL_STACK_SIZE;
+    uint32_t iret_frame = (kstack_base - 32) & ~0xF;
+    idle->kernel_stack_top = iret_frame;
+
+    /* Build IRET frame: EIP=idle_loop, CS=0x08 (kernel), EFLAGS=IF=1,
+     * ESP=kernel stack top, SS=0x10 (kernel data).
+     * Idle runs in ring 0 — no user segments needed. */
+    uint32_t *frame = (uint32_t *)iret_frame;
+    frame[0] = (uint32_t)idle_loop;  /* EIP */
+    frame[1] = 0x08;                 /* CS (kernel code) */
+    frame[2] = 0x202;                /* EFLAGS (IF=1) */
+    frame[3] = iret_frame;           /* ESP (use same stack) */
+    frame[4] = 0x10;                 /* SS (kernel data) */
+
+    /* Set up registers with kernel segments */
+    idle->regs.cs = 0x08;
+    idle->regs.ds = 0x10;
+    idle->regs.es = 0x10;
+    idle->regs.fs = 0x10;
+    idle->regs.gs = 0x10;
+    idle->regs.ss = 0x10;
+    idle->regs.eflags = 0x202;
+    idle->regs.cr3 = (uint32_t)vmm_get_directory();
+
+    num_processes = 1;
 }
 
 /* Shared by create_process and exec: clone page dir, load ELF, build argv stack. */
@@ -292,19 +346,32 @@ int has_live_children(uint32_t parent_pid)
 void process_cleanup_child(pcb_t *child)
 {
     /* Free kernel stack */
-    if (child->kernel_stack_alloc)
+    if (child->kernel_stack_alloc) {
         free((void *)child->kernel_stack_alloc);
+        child->kernel_stack_alloc = 0;
+    }
 
     /* Free address space */
-    uint32_t *saved_dir = vmm_get_directory();
-    switch_to_kernel_page_dir();
-    vmm_free_directory((uint32_t *)child->regs.cr3);
-    set_page_dir(saved_dir);
+    if (child->regs.cr3) {
+        uint32_t *saved_dir = vmm_get_directory();
+        switch_to_kernel_page_dir();
+        vmm_free_directory((uint32_t *)child->regs.cr3);
+        set_page_dir(saved_dir);
+        child->regs.cr3 = 0;
+    }
 
-    /* Free FILE structs */
+    /* Free FILE structs — decrement refcount, close node if last reference */
     for (int i = 0; i < MAX_FILES; i++) {
         if (child->files_open[i]) {
-            free(child->files_open[i]);
+            FILE *fp = child->files_open[i];
+            fs_node_t *node = fp->file;
+            if (node && node->refcount > 0)
+                node->refcount--;
+            if (node && node->refcount == 0) {
+                close_fs(node);
+                free(node);
+            }
+            free(fp);
             child->files_open[i] = 0;
         }
     }
@@ -319,10 +386,141 @@ void process_cleanup_child(pcb_t *child)
     child->memory_regions = 0;
 }
 
+/* Duplicate the calling process. Returns pointer to child PCB (parent),
+ * or NULL on error. Child's saved EAX is set to 0. */
+pcb_t *fork_process(pcb_t *parent, struct regs *regs)
+{
+    if (num_processes >= MAX_PROCESSES)
+        return NULL;
+
+    /* Find free slot */
+    uint32_t slot = num_processes;
+    pcb_t *child = &process_table[slot];
+
+    /* Clone PCB fields */
+    child->pid = next_pid++;
+    child->state = PROCESS_STATE_BLOCKED;
+    child->parent_id = parent->pid;
+    child->signal_pending = 0;
+    child->num_children = 0;
+
+    /* Copy proc_name */
+    for (int i = 0; i < 19; i++)
+        child->proc_name[i] = parent->proc_name[i];
+    child->proc_name[19] = '\0';
+
+    /* Copy CWD */
+    int ci = 0;
+    while (parent->cwd[ci] && ci < 254) {
+        child->cwd[ci] = parent->cwd[ci];
+        ci++;
+    }
+    child->cwd[ci] = '\0';
+
+    /* Allocate new kernel stack */
+    uint32_t kstack_virt = (uint32_t)malloc(KERNEL_STACK_SIZE);
+    child->kernel_stack_alloc = kstack_virt;
+    child->kernel_stack_bottom = kstack_virt;
+    uint32_t kstack_base = kstack_virt + KERNEL_STACK_SIZE;
+    child->kernel_stack_top = (kstack_base - 32) & ~0xF;
+
+    /* Register child in parent's children list */
+    parent->children_id[parent->num_children] = child->pid;
+    parent->num_children++;
+
+    /* Clone page directory + deep-copy user pages.
+     * Switch to parent's page dir so we can read its pages,
+     * then switch to child's so we can write new mappings. */
+    uint32_t *saved_dir = vmm_get_directory();
+    uint32_t *parent_dir = (uint32_t *)((uint32_t)parent->regs.cr3);
+    set_page_dir(parent_dir);
+
+    uint32_t *child_dir = vmm_clone_directory();
+    set_page_dir(child_dir);
+
+    /* Copy user pages from parent into child's address space */
+    vmm_copy_user_pages(parent_dir);
+
+    set_page_dir(saved_dir);
+
+    child->regs.cr3 = (uint32_t)child_dir;
+
+    /* Build a trap frame on the child's OWN kernel stack.
+     * The non-first-run path in switch_to_process loads esp from
+     * child->regs.esp and pops the trap frame. We must NOT point
+     * it at the parent's kernel stack (copying parent->regs.esp
+     * would do that), so we construct a fresh frame here with EAX=0. */
+    struct regs *tf = (struct regs *)(child->kernel_stack_top - sizeof(struct regs));
+    tf->gs      = regs->gs;
+    tf->fs      = regs->fs;
+    tf->es      = regs->es;
+    tf->ds      = regs->ds;
+    tf->edi     = regs->edi;
+    tf->esi     = regs->esi;
+    tf->ebp     = regs->ebp;
+    tf->esp     = regs->esp;    /* kernel esp (ignored by popa) */
+    tf->ebx     = regs->ebx;
+    tf->edx     = regs->edx;
+    tf->ecx     = regs->ecx;
+    tf->eax     = 0;            /* fork returns 0 in child */
+    tf->int_no  = regs->int_no;
+    tf->err_code= regs->err_code;
+    tf->eip     = regs->eip;    /* return address after int $0x80 */
+    tf->cs      = regs->cs;     /* 0x1B user code */
+    tf->eflags  = regs->eflags;
+    tf->useresp = regs->useresp;/* parent's user stack pointer */
+    tf->ss      = regs->ss;     /* 0x23 user data */
+
+    /* Copy remaining register state (cr3 set separately below) */
+    child->regs = parent->regs;
+    child->regs.esp = (uint32_t)tf;  /* point to child's own trap frame */
+    child->regs.eax = 0;
+    child->regs.cr3 = (uint32_t)child_dir;  /* restore CR3 overwritten by struct copy */
+
+    /* Clone VMA list (deep copy) */
+    child->memory_regions = NULL;
+    vma_t *src_vma = parent->memory_regions;
+    vma_t *dst_vma_last = NULL;
+    while (src_vma) {
+        vma_t *new_vma = malloc(sizeof(vma_t));
+        new_vma->start = src_vma->start;
+        new_vma->end = src_vma->end;
+        new_vma->flags = src_vma->flags;
+        new_vma->next = NULL;
+        if (dst_vma_last) {
+            dst_vma_last->next = new_vma;
+        } else {
+            child->memory_regions = new_vma;
+        }
+        dst_vma_last = new_vma;
+        src_vma = src_vma->next;
+    }
+
+    /* Share open files — increment refcount on each node */
+    for (int i = 0; i < MAX_FILES; i++) {
+        if (parent->files_open[i]) {
+            FILE *new_fp = malloc(sizeof(FILE));
+            new_fp->flags = parent->files_open[i]->flags;
+            new_fp->file = parent->files_open[i]->file;
+            if (new_fp->file)
+                new_fp->file->refcount++;
+            child->files_open[i] = new_fp;
+        } else {
+            child->files_open[i] = NULL;
+        }
+    }
+
+    child->state = PROCESS_STATE_READY;
+    num_processes++;
+    return child;
+}
+
 /* Unblock the parent of `child_pid` and set its return value.
- * Removes the child from the parent's children list.
- * schedule() never returns, so the return value must be written
- * directly into the parent's saved trap frame (EAX slot at offset 44). */
+ * When the parent is blocked, also removes the child from the
+ * children list and frees its resources so no zombie accumulates.
+ * When the parent is NOT blocked (child exited before parent
+ * called wait), the child stays in the list as a zombie for
+ * syscall_wait's immediate-reap path to clean up. */
 void unblock_parent(uint32_t child_pid)
 {
     pcb_t *child = get_process_by_pid(child_pid);
@@ -334,27 +532,6 @@ void unblock_parent(uint32_t child_pid)
         uint32_t *tf = (uint32_t *)parent->regs.esp;
         tf[11] = child_pid; /* EAX is at offset 44 / sizeof(uint32_t) = 11 */
         parent->state = PROCESS_STATE_READY;
+        process_cleanup_child(child);
     }
-
-    /* Free address space — switch to kernel page dir first */
-    uint32_t *saved_dir = vmm_get_directory();
-    switch_to_kernel_page_dir();
-    vmm_free_directory((uint32_t *)child->regs.cr3);
-    set_page_dir(saved_dir);
-
-    /* Free FILE structs */
-    for (int i = 0; i < MAX_FILES; i++) {
-        if (child->files_open[i]) {
-            free(child->files_open[i]);
-            child->files_open[i] = 0;
-        }
-    }
-    /* Free VMA regions */
-    vma_t *vma = child->memory_regions;
-    while (vma) {
-        vma_t *next = vma->next;
-        free(vma);
-        vma = next;
-    }
-    child->memory_regions = 0;
 }

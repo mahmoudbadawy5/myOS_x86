@@ -62,6 +62,7 @@ pcb_t *get_process_by_pid(uint32_t pid);
 void remove_child_from_parent(pcb_t *parent, uint32_t child_pid);
 void kill_children_of(uint32_t parent_pid);
 void process_cleanup_child(pcb_t *child);
+pcb_t *fork_process(pcb_t *parent, struct regs *regs);
 
 extern pcb_t *current_process;
 extern pcb_t process_table[];

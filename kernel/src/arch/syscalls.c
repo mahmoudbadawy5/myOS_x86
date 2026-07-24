@@ -125,6 +125,7 @@ int32_t (*syscalls[MAX_SYSCALLS])(struct regs *) = {
     syscall_mkdir,
     syscall_unlink,
     syscall_ps,
+    syscall_fork,
 };
 
 void init_syscalls(void)
@@ -357,7 +358,11 @@ int32_t syscall_wait(struct regs *regs)
         pcb_t *child = get_process_by_pid(dead);
         if (child) {
             process_cleanup_child(child);
-            child->state = PROCESS_STATE_TERMINATED; /* mark slot reusable */
+            /* Leave state as TERMINATED — child was already removed
+             * from children list so find_terminated_child won't find
+             * it again.  State TERMINATED is skipped by the scheduler.
+             * Do NOT set state to 0 (= NEW) or the scheduler will
+             * try to first-run a process with a freed kernel stack. */
         }
         regs->eax = dead;
         return dead;
@@ -770,7 +775,13 @@ int32_t syscall_close(struct regs *regs)
         return -1;
 
     FILE *fp = current_process->files_open[fd];
-    close_fs(fp->file);
+    fs_node_t *node = fp->file;
+    if (node && node->refcount > 0)
+        node->refcount--;
+    if (node && node->refcount == 0) {
+        close_fs(node);
+        free(node);
+    }
     free(fp);
     current_process->files_open[fd] = 0;
     return 0;
@@ -915,4 +926,21 @@ int32_t syscall_ps(struct regs *regs)
         return -1;
 
     return (int32_t)count;
+}
+
+/*
+    fork — duplicate the current process.
+    Returns: 0 in child, child PID in parent, -1 on error.
+*/
+int32_t syscall_fork(struct regs *regs)
+{
+    (void)regs;
+    if (!current_process)
+        return -1;
+
+    pcb_t *child = fork_process(current_process, regs);
+    if (!child)
+        return -1;
+
+    return (int32_t)child->pid;
 }

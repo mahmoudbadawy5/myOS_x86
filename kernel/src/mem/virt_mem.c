@@ -206,6 +206,47 @@ int is_page_mapped(uint32_t virt_addr)
     return (pt_entry & PAGE_PRESENT) && (pt_entry & PAGE_USER);
 }
 
+/* Deep-copy all present user pages from the current page directory into a new one.
+ * The new directory must already have page tables allocated (from vmm_clone_directory).
+ * Both directories must be active (caller switches page dirs as needed).
+ * source_dir: physical address of the source page directory. */
+void vmm_copy_user_pages(uint32_t *source_dir)
+{
+    uint32_t *src = (uint32_t *)((uint32_t)source_dir + KERNEL_VIRTUAL_BASE);
+
+    for (uint32_t pd = 0; pd < KERNEL_PAGE_NUMBER; pd++) {
+        if (!(src[pd] & PAGE_PRESENT))
+            continue;
+
+        uint32_t *src_table = (uint32_t *)((src[pd] & PAGE_ADDR) + KERNEL_VIRTUAL_BASE);
+
+        for (uint32_t pt = 0; pt < 1024; pt++) {
+            if (!(src_table[pt] & PAGE_PRESENT))
+                continue;
+            if (!(src_table[pt] & PAGE_USER))
+                continue;
+
+            uint32_t virt = (pd << 22) | (pt << 12);
+            uint32_t src_phys = src_table[pt] & PAGE_ADDR;
+
+            /* Allocate a new physical page for the child */
+            void *new_phys = alloc_blocks(1);
+            if (!new_phys)
+                continue;
+
+            /* Copy contents from parent's physical page */
+            void *src_virt = (void *)(src_phys + KERNEL_VIRTUAL_BASE);
+            void *dst_virt = (void *)((uint32_t)new_phys + KERNEL_VIRTUAL_BASE);
+            memcpy(dst_virt, src_virt, 4096);
+
+            /* Map into the child's page directory (cur_page_dir) at same virtual addr */
+            uint32_t *page = get_page(virt, PAGE_USER);
+            *page = ((uint32_t)new_phys & PAGE_ADDR) | PAGE_PRESENT | PAGE_RW | PAGE_USER;
+        }
+    }
+    tlb_flush();
+}
+
 /* Copy data to user space, checking each page is mapped first.
  * Returns 0 on success, -1 if any page is unmapped. */
 int copy_to_user(void *dst, const void *src, uint32_t size)

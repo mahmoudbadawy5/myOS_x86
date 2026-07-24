@@ -42,6 +42,7 @@ typedef struct fs_node
     uint32_t inode;
     uint32_t seek_offset;
     uint32_t impl;
+    uint32_t refcount;
     struct fs_node *ptr;
     read_type_t read;
     write_type_t write;

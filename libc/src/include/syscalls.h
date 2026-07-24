@@ -26,5 +26,6 @@ int sys_close(int fd);
 int sys_mkdir(const char *path);
 int sys_unlink(const char *path);
 int sys_ps(void *buf, int max_entries);
+int sys_fork(void);
 
 #endif

@@ -42,5 +42,6 @@ int fopen(char *path, char *modes)
     current_process->files_open[free_id] = malloc(sizeof(FILE));
     current_process->files_open[free_id]->file = node;
     current_process->files_open[free_id]->flags = modes_mask;
+    node->refcount++;
     return free_id;
 }
