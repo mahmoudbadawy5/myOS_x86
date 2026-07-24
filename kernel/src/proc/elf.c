@@ -476,14 +476,14 @@ uint32_t load_shared_library(pcb_t *proc, const char *path, uint32_t load_addr)
 	}
 
 	/* Find first PT_LOAD to determine the offset within the file */
-	uint32_t first_vaddr = 0;
+	uint32_t first_vaddr = -1;
 	uint32_t max_end = 0;
 	for (int i = 0; i < hdr->e_phnum; i++) {
 		Elf32_Phdr *phdr = malloc(sizeof(Elf32_Phdr));
 		seek_fs(lib_node, hdr->e_phoff + (i * hdr->e_phentsize), SEEK_START);
 		read_fs(lib_node, sizeof(Elf32_Phdr), 1, (uint8_t *)phdr);
 		if (phdr->p_type == PT_LOAD) {
-			if (first_vaddr == 0)
+			if (first_vaddr == -1)
 				first_vaddr = phdr->p_vaddr;
 			uint32_t end = phdr->p_vaddr + phdr->p_memsz;
 			if (end > max_end) max_end = end;
