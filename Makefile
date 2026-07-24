@@ -11,6 +11,7 @@ apps/%.bin: apps/%.c
 
 initrd: tools/create_initrd.py $(apps)
 	@cp $(apps) initrd/
+	@cp libc/build/libc.so initrd/
 	@python tools/create_initrd.py initrd initrd.img
 
 .PHONY: fat12

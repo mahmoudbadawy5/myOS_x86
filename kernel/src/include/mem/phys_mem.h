@@ -13,3 +13,5 @@ void deinitialize_memory_region(uint32_t start, uint32_t size);
 int find_first_free_blocks(uint32_t size);
 uint32_t *alloc_blocks(uint32_t size);
 void free_blocks(uint32_t *address, uint32_t size);
+void phys_ref_block(uint32_t *address);
+int phys_get_refcount(uint32_t *address);
