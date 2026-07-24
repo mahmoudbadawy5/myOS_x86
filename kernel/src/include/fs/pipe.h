@@ -10,6 +10,7 @@ typedef struct {
     uint32_t read_pos;
     uint32_t write_pos;
     uint32_t count;
+    uint32_t refcount;  /* shared by both endpoints; free buf when 0 */
 } pipe_buf_t;
 
 /* Creates a pipe pair: *read_fp and *write_fp are allocated and
