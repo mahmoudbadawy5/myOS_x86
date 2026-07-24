@@ -180,3 +180,17 @@ int sys_fork(void)
     __asm__ __volatile__("int $0x80" : "=a"(ret) : "a"(24) : "memory", "cc");
     return ret;
 }
+
+void *sys_mmap(void *addr, unsigned int length, int flags, int fd, int offset)
+{
+    void *ret;
+    __asm__ __volatile__("int $0x80" : "=a"(ret) : "a"(25), "b"(addr), "c"(length), "d"(flags), "S"(fd), "D"(offset) : "memory", "cc");
+    return ret;
+}
+
+int sys_munmap(void *addr, unsigned int length)
+{
+    int ret;
+    __asm__ __volatile__("int $0x80" : "=a"(ret) : "a"(26), "b"(addr), "c"(length) : "memory", "cc");
+    return ret;
+}

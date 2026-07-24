@@ -27,5 +27,7 @@ int sys_mkdir(const char *path);
 int sys_unlink(const char *path);
 int sys_ps(void *buf, int max_entries);
 int sys_fork(void);
+void *sys_mmap(void *addr, unsigned int length, int flags, int fd, int offset);
+int sys_munmap(void *addr, unsigned int length);
 
 #endif

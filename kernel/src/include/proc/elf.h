@@ -26,9 +26,10 @@ enum Elf_Ident {
 };
 
 enum Elf_Type {
-	ET_NONE		= 0, // Unkown Type
+	ET_NONE		= 0, // Unknown Type
 	ET_REL		= 1, // Relocatable File
-	ET_EXEC		= 2  // Executable File
+	ET_EXEC		= 2, // Executable File
+	ET_DYN		= 3  // Shared object / PIE executable
 };
 
 
@@ -87,8 +88,82 @@ typedef struct {
 
 
 #define PT_LOAD 1
+#define PT_DYNAMIC 2
 
+
+/* ELF Dynamic section entry */
+typedef struct {
+	Elf32_Sword d_tag;
+	union {
+		Elf32_Word  d_val;
+		Elf32_Addr  d_ptr;
+	} d_un;
+} Elf32_Dyn;
+
+/* Dynamic section tags */
+#define DT_NULL     0
+#define DT_NEEDED   1
+#define DT_HASH     4
+#define DT_STRTAB   5
+#define DT_SYMTAB   6
+#define DT_STRSZ    10
+#define DT_SYMENT   11
+#define DT_REL      17
+#define DT_RELSZ    18
+#define DT_RELENT   19
+#define DT_PLTREL   20
+#define DT_JMPREL   23
+#define DT_PLTRELSZ 2
+
+/* ELF Symbol table entry */
+typedef struct {
+	Elf32_Word    st_name;
+	Elf32_Addr    st_value;
+	Elf32_Word    st_size;
+	uint8_t       st_info;
+	uint8_t       st_other;
+	Elf32_Half    st_shndx;
+} Elf32_Sym;
+
+#define ELF32_ST_BIND(info) ((info) >> 4)
+#define ELF32_ST_TYPE(info) ((info) & 0xF)
+#define STT_FUNC    2
+#define STT_OBJECT  1
+#define STB_GLOBAL  1
+#define STB_WEAK    2
+#define SHN_UNDEF   0
+
+/* ELF Relocation entry (Rel) */
+typedef struct {
+	Elf32_Addr    r_offset;
+	Elf32_Word    r_info;
+} Elf32_Rel;
+
+/* ELF Relocation entry with addend (Rela) */
+typedef struct {
+	Elf32_Addr    r_offset;
+	Elf32_Word    r_info;
+	Elf32_Sword   r_addend;
+} Elf32_Rela;
+
+#define ELF32_R_SYM(info)  ((info) >> 8)
+#define ELF32_R_TYPE(info) ((uint8_t)(info))
+
+/* i386 relocation types */
+#define R_386_NONE      0
+#define R_386_32        1
+#define R_386_PC32      2
+#define R_386_GOT32     3
+#define R_386_PLT32     4
+#define R_386_COPY      5
+#define R_386_GLOB_DAT  6
+#define R_386_JMP_SLOT   7
+#define R_386_RELATIVE  8
+
+/* Shared library base address (mapped here for all processes) */
+#define SHLIB_BASE 0x40000000
 
 bool elf_check_file(Elf32_Ehdr *hdr);
 bool elf_check_supported(Elf32_Ehdr *hdr);
 int load_elf(pcb_t* proc, const char* path);
+uint32_t load_shared_library(pcb_t *proc, const char *path, uint32_t load_addr);

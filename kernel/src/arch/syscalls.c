@@ -11,6 +11,7 @@
 #include <mem/vmm.h>
 #include <mem/malloc.h>
 #include <fs/pipe.h>
+#include <fs/vfs.h>
 
 /* Validate that a pointer lies in userspace (below kernel base) */
 static inline int is_user_ptr(const void *p)
@@ -126,6 +127,8 @@ int32_t (*syscalls[MAX_SYSCALLS])(struct regs *) = {
     syscall_unlink,
     syscall_ps,
     syscall_fork,
+    syscall_mmap,
+    syscall_munmap,
 };
 
 void init_syscalls(void)
@@ -327,17 +330,21 @@ int32_t syscall_spawn(struct regs *regs)
     if (argc == 0)
         return -1;
 
-    /* Build path: "/<argv[0]>.bin" */
+    /* Build path: "/bin/<argv[0]>.bin" — leave room for prefix, suffix, and NUL */
     char path[128];
     path[0] = '/';
+    path[1] = 'b';
+    path[2] = 'i';
+    path[3] = 'n';
+    path[4] = '/';
     int i;
-    for (i = 0; argv[0][i] && i < 122; i++)
-        path[i + 1] = argv[0][i];
-    path[i + 1] = '.';
-    path[i + 2] = 'b';
-    path[i + 3] = 'i';
-    path[i + 4] = 'n';
-    path[i + 5] = '\0';
+    for (i = 0; argv[0][i] && i < 118; i++)
+        path[i + 5] = argv[0][i];
+    path[i + 5] = '.';
+    path[i + 6] = 'b';
+    path[i + 7] = 'i';
+    path[i + 8] = 'n';
+    path[i + 9] = '\0';
 
     create_process(path, current_process->pid, argc, argv);
     return 0;
@@ -416,17 +423,21 @@ int32_t syscall_exec(struct regs *regs)
     if (argc == 0)
         return -1;
 
-    /* Build path: "/<argv[0]>.bin" */
+    /* Build path: "/bin/<argv[0]>.bin" — leave room for prefix, suffix, and NUL */
     char path[128];
     path[0] = '/';
+    path[1] = 'b';
+    path[2] = 'i';
+    path[3] = 'n';
+    path[4] = '/';
     int i;
-    for (i = 0; argv[0][i] && i < 122; i++)
-        path[i + 1] = argv[0][i];
-    path[i + 1] = '.';
-    path[i + 2] = 'b';
-    path[i + 3] = 'i';
-    path[i + 4] = 'n';
-    path[i + 5] = '\0';
+    for (i = 0; argv[0][i] && i < 118; i++)
+        path[i + 5] = argv[0][i];
+    path[i + 5] = '.';
+    path[i + 6] = 'b';
+    path[i + 7] = 'i';
+    path[i + 8] = 'n';
+    path[i + 9] = '\0';
 
     pcb_t *proc = current_process;
 
@@ -530,8 +541,18 @@ int32_t syscall_pipe(struct regs *regs)
 
     /* Copy fds to user space safely */
     int kfds[2] = { read_fd, write_fd };
-    if (copy_to_user(fds, kfds, sizeof(kfds)) != 0)
+    if (copy_to_user(fds, kfds, sizeof(kfds)) != 0) {
+        /* Roll back: close both pipe ends and free resources */
+        close_fs(read_fp->file);
+        close_fs(write_fp->file);
+        free(read_fp->file);
+        free(write_fp->file);
+        free(read_fp);
+        free(write_fp);
+        current_process->files_open[read_fd] = 0;
+        current_process->files_open[write_fd] = 0;
         return -1;
+    }
 
     return 0;
 }
@@ -943,4 +964,127 @@ int32_t syscall_fork(struct regs *regs)
         return -1;
 
     return (int32_t)child->pid;
+}
+
+/*
+    mmap — Map pages into process address space.
+    args: ebx=addr, ecx=length, edx=flags, esi=fd, edi=offset
+    flags bits: 0x1=MAP_SHARED, 0x2=MAP_PRIVATE, 0x10=MAP_ANON
+    Returns: mapped address, or -1 on error.
+*/
+int32_t syscall_mmap(struct regs *regs)
+{
+    uint32_t addr   = regs->ebx;
+    uint32_t length = regs->ecx;
+    uint32_t flags  = regs->edx;
+    (void)flags;
+
+    if (!current_process)
+        return -1;
+
+    /* Round length up to page boundary */
+    uint32_t pages = (length + BLOCK_SIZE - 1) / BLOCK_SIZE;
+    if (pages == 0) pages = 1;
+
+    /* Find a free virtual address if addr is 0 */
+    if (addr == 0)
+        addr = USER_CODE_BASE + 0x400000;
+
+    /* Resolve overlaps: repeatedly scan until a full pass makes no adjustment.
+     * This handles unsorted VMA lists where moving addr past one region can
+     * reveal an overlap with a previously-scanned region. */
+    int changed;
+    do {
+        changed = 0;
+        vma_t *vma = current_process->memory_regions;
+        while (vma) {
+            if (!(addr + pages * BLOCK_SIZE <= vma->start || vma->end <= addr)) {
+                addr = vma->end;
+                changed = 1;
+            }
+            vma = vma->next;
+        }
+    } while (changed);
+
+    uint32_t vma_flags = VMA_USER | VMA_READ;
+    if (flags & 0x2) vma_flags |= VMA_WRITE;
+
+    /* Map pages */
+    for (uint32_t i = 0; i < pages; i++) {
+        void *virt = (void *)(addr + i * BLOCK_SIZE);
+
+        void *phys = alloc_blocks(1);
+        if (!phys) {
+            /* Roll back previously mapped pages */
+            for (uint32_t j = 0; j < i; j++)
+                unmap_address((void *)(addr + j * BLOCK_SIZE));
+            return -1;
+        }
+        memset((void *)((uint32_t)phys + KERNEL_VIRTUAL_BASE), 0, BLOCK_SIZE);
+        map_address_user(virt, phys);
+    }
+
+    /* Register VMA */
+    vma_t *new_vma = malloc(sizeof(vma_t));
+    if (!new_vma) {
+        /* Roll back all mapped pages */
+        for (uint32_t i = 0; i < pages; i++)
+            unmap_address((void *)(addr + i * BLOCK_SIZE));
+        return -1;
+    }
+    new_vma->start = addr;
+    new_vma->end = addr + pages * BLOCK_SIZE;
+    new_vma->flags = vma_flags;
+    new_vma->next = NULL;
+
+    vma_t *last = NULL;
+    vma_t *cur = current_process->memory_regions;
+    while (cur) { last = cur; cur = cur->next; }
+    if (last) last->next = new_vma;
+    else current_process->memory_regions = new_vma;
+
+    return (int32_t)addr;
+}
+
+/*
+    munmap — Unmap pages from process address space.
+    args: ebx=addr, ecx=length
+    Returns: 0 on success, -1 on error.
+*/
+int32_t syscall_munmap(struct regs *regs)
+{
+    uint32_t addr   = regs->ebx;
+    uint32_t length = regs->ecx;
+
+    if (!current_process)
+        return -1;
+
+    if (addr == 0 || length == 0)
+        return -1;
+
+    uint32_t start = addr & ~(BLOCK_SIZE - 1);
+    uint32_t end   = (addr + length + BLOCK_SIZE - 1) & ~(BLOCK_SIZE - 1);
+
+    /* Find the VMA that matches this range */
+    vma_t **pprev = &current_process->memory_regions;
+    vma_t *vma = current_process->memory_regions;
+    while (vma) {
+        if (vma->start == start && vma->end == end) {
+            /* Remove from list */
+            *pprev = vma->next;
+
+            /* Unmap all pages in the range */
+            uint32_t pages = (end - start) / BLOCK_SIZE;
+            for (uint32_t i = 0; i < pages; i++)
+                unmap_address((void *)(start + i * BLOCK_SIZE));
+
+            free(vma);
+            return 0;
+        }
+        pprev = &vma->next;
+        vma = vma->next;
+    }
+
+    /* No matching VMA found */
+    return -1;
 }
