@@ -2,6 +2,8 @@ CC=i686-elf-gcc
 LD=i686-elf-ld
 PIC_FLAGS = -fPIC -fno-stack-protector -m32 -Wall -O -fstrength-reduce -fomit-frame-pointer -finline-functions -nostdinc -fno-builtin
 
+.PHONY: all clean
+
 all: build/libmath.so
 
 clean:

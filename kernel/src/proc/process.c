@@ -390,9 +390,6 @@ void process_cleanup_child(pcb_t *child)
  * or NULL on error. Child's saved EAX is set to 0. */
 pcb_t *fork_process(pcb_t *parent, struct regs *regs)
 {
-    if (num_processes >= MAX_PROCESSES)
-        return NULL;
-
     /* Find free slot — reuse terminated entries first */
     int slot = -1;
     for (uint32_t i = 0; i < num_processes; i++) {
@@ -431,7 +428,11 @@ pcb_t *fork_process(pcb_t *parent, struct regs *regs)
 
     /* Allocate new kernel stack */
     uint32_t kstack_virt = (uint32_t)malloc(KERNEL_STACK_SIZE);
-    if (!kstack_virt) return NULL;
+    if (!kstack_virt) {
+        parent->num_children--;
+        child->state = PROCESS_STATE_TERMINATED;
+        return NULL;
+    }
     child->kernel_stack_alloc = kstack_virt;
     child->kernel_stack_bottom = kstack_virt;
     uint32_t kstack_base = kstack_virt + KERNEL_STACK_SIZE;
@@ -529,6 +530,7 @@ pcb_t *fork_process(pcb_t *parent, struct regs *regs)
 
     if (!vma_ok || !fp_ok) {
         process_cleanup_child(child);
+        child->state = PROCESS_STATE_TERMINATED;
         parent->num_children--;
         return NULL;
     }

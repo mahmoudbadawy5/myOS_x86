@@ -77,7 +77,6 @@ int load_elf(pcb_t* proc, const char* path) {
 	if(!elf_check_supported(hdr)) { free(hdr); return -3; }
 
 	uint32_t max_proc_end = 0;
-	uint32_t first_load_vaddr = 0;
 
 	for (int i = 0; i < hdr->e_phnum; i++) {
 		Elf32_Phdr* phdr = malloc(sizeof(Elf32_Phdr));
@@ -91,10 +90,6 @@ int load_elf(pcb_t* proc, const char* path) {
 
 			/* For ET_DYN (PIE), compute the relocation offset */
 			uint32_t vaddr = phdr->p_vaddr;
-			if (hdr->e_type == ET_DYN) {
-				if (first_load_vaddr == 0)
-					first_load_vaddr = phdr->p_vaddr;
-			}
 
 			alloc_mem_area(proc, vaddr, phdr->p_memsz, flags);
 			uint32_t cur_end = vaddr + phdr->p_memsz;
@@ -252,6 +247,7 @@ int load_elf(pcb_t* proc, const char* path) {
 							}
 
 							free(ldyns);
+							free(lphdr);
 							break;
 						}
 						free(lphdr);
@@ -321,6 +317,7 @@ int load_elf(pcb_t* proc, const char* path) {
 									}
 
 									free(ldyns);
+									free(lphdr);
 									break;
 								}
 								free(lphdr);
@@ -600,12 +597,15 @@ uint32_t load_shared_library(pcb_t *proc, const char *path, uint32_t load_addr)
 					if (type == R_386_RELATIVE) {
 						*loc += load_addr;
 					} else if ((type == R_386_GLOB_DAT || type == R_386_JMP_SLOT) && sym_idx != 0 && sym_idx < sym_count && lsymtab && lstrtab) {
-						*loc = lsymtab[sym_idx].st_value + load_addr;
+						/* Skip undefined symbols — resolved by the app's relocation phase */
+						if (lsymtab[sym_idx].st_shndx != SHN_UNDEF)
+							*loc = lsymtab[sym_idx].st_value + load_addr;
 					}
 				}
 			}
 
 			free(ldyns);
+			free(phdr);
 			break;
 		}
 		free(phdr);

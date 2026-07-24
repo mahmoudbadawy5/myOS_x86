@@ -10,6 +10,8 @@ c_pic_obj = $(patsubst src/%, build_pic/%, $(c_src:.c=.o))
 asm_obj	=  $(patsubst src/%, build/%, $(asm_src:.asm=.o))
 all_obj	=  $(c_obj) $(asm_obj)
 
+.PHONY: all clean
+
 all: build/libc.o build/libc.so
 
 clean:

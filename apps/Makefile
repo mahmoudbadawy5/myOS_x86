@@ -5,6 +5,8 @@ DYN_FLAGS = -fPIC -fpie -fno-stack-protector -m32 -Wall -O -fstrength-reduce -fo
 all_apps_src := $(shell find . -maxdepth 1 -name "*.c" ! -name "test_dynlib.c")
 apps_bins    = $(patsubst ./%.c, %.bin, $(all_apps_src))
 
+.PHONY: all clean
+
 all: $(apps_bins) test_dynlib.bin
 
 clean:
@@ -18,14 +20,14 @@ clean:
 
 %.bin: %.c ../libc/build/libc.so
 	@echo "[BUILD-DYN] $@"
-	nasm -f elf -o /tmp/dyn_crt0.o ../libc/src/crt0.asm
+	nasm -f elf -o /tmp/dyn_crt0_$@.o ../libc/src/crt0.asm
 	$(CC) -I../libc/src/include $(DYN_FLAGS) -c -o $(subst .bin,.o,$@) $(subst .bin,.c,$@)
-	$(LD) -shared -T dynamic.ld -o $@ /tmp/dyn_crt0.o $(subst .bin,.o,$@) ../libc/build/libc.so
-	rm -f $(subst .bin,.o,$@) /tmp/dyn_crt0.o
+	$(LD) -shared -T dynamic.ld -o $@ /tmp/dyn_crt0_$@.o $(subst .bin,.o,$@) ../libc/build/libc.so
+	rm -f $(subst .bin,.o,$@) /tmp/dyn_crt0_$@.o
 
 test_dynlib.bin: test_dynlib.c ../libc/build/libc.so ../libmath/build/libmath.so
 	@echo "[BUILD-DYN] $@"
-	nasm -f elf -o /tmp/dyn_crt0.o ../libc/src/crt0.asm
+	nasm -f elf -o /tmp/dyn_crt0_test_dynlib.bin.o ../libc/src/crt0.asm
 	$(CC) -I../libc/src/include -I../libmath/include $(DYN_FLAGS) -c -o test_dynlib.o test_dynlib.c
-	$(LD) -shared -T dynamic.ld -o $@ /tmp/dyn_crt0.o test_dynlib.o ../libc/build/libc.so ../libmath/build/libmath.so
-	rm -f test_dynlib.o /tmp/dyn_crt0.o
+	$(LD) -shared -T dynamic.ld -o $@ /tmp/dyn_crt0_test_dynlib.bin.o test_dynlib.o ../libc/build/libc.so ../libmath/build/libmath.so
+	rm -f test_dynlib.o /tmp/dyn_crt0_test_dynlib.bin.o

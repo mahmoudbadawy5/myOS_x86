@@ -12,6 +12,8 @@ apps/%.bin: apps/%.c
 initrd: tools/create_initrd.py $(apps) libc/build/libc.so libmath/build/libmath.so
 	@mkdir -p initrd/bin initrd/lib
 	@rm -f initrd/*.bin initrd/libc.so
+	@rm -f initrd/bin/*.bin
+	@rm -f initrd/lib/*.so
 	@cp apps/*.bin initrd/bin/
 	@cp libc/build/libc.so initrd/lib/
 	@cp libmath/build/libmath.so initrd/lib/

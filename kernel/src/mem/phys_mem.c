@@ -91,6 +91,8 @@ void free_blocks(uint32_t *address, uint32_t size)
 {
     uint32_t start_block = (uint32_t)address / BLOCK_SIZE;
     for (int i = 0; i < size; i++) {
+        if (start_block + i >= MAX_BLOCK_ENTRIES)
+            break;
         if (ref_counts[start_block + i] > 1) {
             ref_counts[start_block + i]--;
         } else {
