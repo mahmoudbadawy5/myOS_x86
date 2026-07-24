@@ -329,17 +329,21 @@ int32_t syscall_spawn(struct regs *regs)
     if (argc == 0)
         return -1;
 
-    /* Build path: "/<argv[0]>.bin" */
+    /* Build path: "/bin/<argv[0]>.bin" */
     char path[128];
     path[0] = '/';
+    path[1] = 'b';
+    path[2] = 'i';
+    path[3] = 'n';
+    path[4] = '/';
     int i;
     for (i = 0; argv[0][i] && i < 122; i++)
-        path[i + 1] = argv[0][i];
-    path[i + 1] = '.';
-    path[i + 2] = 'b';
-    path[i + 3] = 'i';
-    path[i + 4] = 'n';
-    path[i + 5] = '\0';
+        path[i + 5] = argv[0][i];
+    path[i + 5] = '.';
+    path[i + 6] = 'b';
+    path[i + 7] = 'i';
+    path[i + 8] = 'n';
+    path[i + 9] = '\0';
 
     create_process(path, current_process->pid, argc, argv);
     return 0;
@@ -418,17 +422,21 @@ int32_t syscall_exec(struct regs *regs)
     if (argc == 0)
         return -1;
 
-    /* Build path: "/<argv[0]>.bin" */
+    /* Build path: "/bin/<argv[0]>.bin" */
     char path[128];
     path[0] = '/';
+    path[1] = 'b';
+    path[2] = 'i';
+    path[3] = 'n';
+    path[4] = '/';
     int i;
     for (i = 0; argv[0][i] && i < 122; i++)
-        path[i + 1] = argv[0][i];
-    path[i + 1] = '.';
-    path[i + 2] = 'b';
-    path[i + 3] = 'i';
-    path[i + 4] = 'n';
-    path[i + 5] = '\0';
+        path[i + 5] = argv[0][i];
+    path[i + 5] = '.';
+    path[i + 6] = 'b';
+    path[i + 7] = 'i';
+    path[i + 8] = 'n';
+    path[i + 9] = '\0';
 
     pcb_t *proc = current_process;
 

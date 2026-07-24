@@ -167,21 +167,29 @@ int load_elf(pcb_t* proc, const char* path) {
 				sym_entry_t global_syms[256];
 				int global_sym_count = 0;
 
+				uint32_t next_lib_base = SHLIB_BASE;
+
 				for (int n = 0; n < needed_count; n++) {
 					const char *lib_name = dyn_strtab + needed[n]->d_un.d_val;
 					char lib_path[256];
-					/* Build path: look in / (root of initrd) */
+					/* Build path: look in /lib/ */
 					lib_path[0] = '/';
-					int pi = 1;
+					lib_path[1] = 'l';
+					lib_path[2] = 'i';
+					lib_path[3] = 'b';
+					lib_path[4] = '/';
+					int pi = 5;
 					const char *s = lib_name;
 					while (*s && pi < 254) lib_path[pi++] = *s++;
 					lib_path[pi] = '\0';
 
-					uint32_t lib_base = load_shared_library(proc, lib_path, SHLIB_BASE);
-					if (lib_base == 0) {
+					uint32_t lib_base = next_lib_base;
+					uint32_t lib_top = load_shared_library(proc, lib_path, lib_base);
+					if (lib_top == 0) {
 						ERROR("load_elf: failed to load shared lib: %s\n", lib_name);
 						continue;
 					}
+					next_lib_base = (lib_top + 0xFFF) & ~0xFFF; /* Align to page boundary */
 
 					/* Read the library's dynamic section to get exported symbols */
 					fs_node_t *lib_node = get_node((char *)lib_path, root_dir);
@@ -253,9 +261,9 @@ int load_elf(pcb_t* proc, const char* path) {
 
 				/* If no DT_NEEDED found, default-load libc.so */
 				if (needed_count == 0) {
-					uint32_t lib_base = load_shared_library(proc, "/libc.so", SHLIB_BASE);
+					uint32_t lib_base = load_shared_library(proc, "/lib/libc.so", SHLIB_BASE);
 					if (lib_base != 0) {
-						fs_node_t *lib_node = get_node("/libc.so", root_dir);
+						fs_node_t *lib_node = get_node("/lib/libc.so", root_dir);
 						if (lib_node) {
 							Elf32_Ehdr *lib_hdr = malloc(sizeof(Elf32_Ehdr));
 							seek_fs(lib_node, 0, SEEK_START);
@@ -449,9 +457,9 @@ int load_elf(pcb_t* proc, const char* path) {
 
 /*
  * load_shared_library — Load an ET_DYN shared object at load_addr.
- * Returns the actual base address where it was loaded, or 0 on error.
+ * Returns the top address (load_addr + image size) where it was loaded, or 0 on error.
  */
-int load_shared_library(pcb_t *proc, const char *path, uint32_t load_addr)
+uint32_t load_shared_library(pcb_t *proc, const char *path, uint32_t load_addr)
 {
 	fs_node_t *lib_node = get_node((char *)path, root_dir);
 	if (!lib_node || !(lib_node->flags & FS_FILE)) {
@@ -469,14 +477,16 @@ int load_shared_library(pcb_t *proc, const char *path, uint32_t load_addr)
 
 	/* Find first PT_LOAD to determine the offset within the file */
 	uint32_t first_vaddr = 0;
+	uint32_t max_end = 0;
 	for (int i = 0; i < hdr->e_phnum; i++) {
 		Elf32_Phdr *phdr = malloc(sizeof(Elf32_Phdr));
 		seek_fs(lib_node, hdr->e_phoff + (i * hdr->e_phentsize), SEEK_START);
 		read_fs(lib_node, sizeof(Elf32_Phdr), 1, (uint8_t *)phdr);
 		if (phdr->p_type == PT_LOAD) {
-			first_vaddr = phdr->p_vaddr;
-			free(phdr);
-			break;
+			if (first_vaddr == 0)
+				first_vaddr = phdr->p_vaddr;
+			uint32_t end = phdr->p_vaddr + phdr->p_memsz;
+			if (end > max_end) max_end = end;
 		}
 		free(phdr);
 	}
@@ -602,5 +612,6 @@ int load_shared_library(pcb_t *proc, const char *path, uint32_t load_addr)
 	}
 
 	free(hdr);
-	return load_addr;
+	/* Return the address just past the end of the loaded image */
+	return load_addr + (max_end - first_vaddr);
 }
