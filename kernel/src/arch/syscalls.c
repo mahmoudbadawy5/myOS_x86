@@ -442,11 +442,11 @@ int32_t syscall_exec(struct regs *regs)
 
     pcb_t *proc = current_process;
 
-    /* Free old address space */
-    uint32_t *saved_dir = vmm_get_directory();
+    /* Free old address space — switch to kernel dir so we can safely
+     * free the child's page tables, then stay on kernel dir.
+     * load_program() will clone from kernel dir to build the new one. */
     switch_to_kernel_page_dir();
     vmm_free_directory((uint32_t *)proc->regs.cr3);
-    set_page_dir(saved_dir);
 
     /* Free old VMA regions */
     vma_t *vma = proc->memory_regions;
@@ -471,6 +471,27 @@ int32_t syscall_exec(struct regs *regs)
         proc->state = PROCESS_STATE_TERMINATED;
         return -1;
     }
+
+    /* Overwrite the CPU-pushed IRET frame in the trap frame so that
+     * the handler's iretd jumps to the new program, not back to the
+     * old exec wrapper code (which is unmapped in the new page dir). */
+    volatile uint32_t *iret = (volatile uint32_t *)((uint32_t *)regs + 14); /* eip at offset 56 */
+    iret[0] = proc->regs.eip;  /* EIP = new entry point */
+    iret[1] = 0x1B;             /* CS  = user code */
+    iret[2] = 0x202;            /* EFLAGS */
+    iret[3] = proc->regs.esp;  /* ESP = new user stack */
+    iret[4] = 0x23;             /* SS  = user data */
+
+    /* CPU memory fence: ensure ALL prior stores (including the IRET
+     * frame writes above) are committed to memory before we change
+     * CR3.  A compiler barrier alone is insufficient — QEMU may not
+     * serialize stores vs CR3 writes without a real fence. */
+    __asm__ __volatile__("sfence" ::: "memory");
+
+    /* Switch to the new process page directory before iretd so the
+     * user-mode code can access its pages.  The new dir includes
+     * kernel mappings (cloned from kernel dir) so we stay safe. */
+    set_page_dir((uint32_t *)proc->regs.cr3);
 
     return 0;
 }

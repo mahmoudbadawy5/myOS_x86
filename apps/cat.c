@@ -2,8 +2,10 @@
 #include <syscalls.h>
 #include <stdio.h>
 
+
 int main(int argc, char **argv)
 {
+    printf("Called cat pid=%d\n", sys_getpid());
     if (argc < 2) {
         print("cat: missing file operand\n");
         return 1;
@@ -24,5 +26,6 @@ int main(int argc, char **argv)
     }
 
     sys_close(fd);
+    printf("Ended");
     return 0;
 }
