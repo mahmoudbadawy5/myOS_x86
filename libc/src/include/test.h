@@ -17,6 +17,8 @@ unsigned int spawn(const char *path);
 unsigned int wait(void);
 unsigned int exec(const char *cmdline);
 int dup(int fd);
+int dup2(int oldfd, int newfd);
+int fork(void);
 int pipe(int fds[2]);
 int kill(int pid, int signal);
 int getpid(void);

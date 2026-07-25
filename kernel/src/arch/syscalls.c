@@ -129,6 +129,7 @@ int32_t (*syscalls[MAX_SYSCALLS])(struct regs *) = {
     syscall_fork,
     syscall_mmap,
     syscall_munmap,
+    syscall_dup2,
 };
 
 void init_syscalls(void)
@@ -491,11 +492,64 @@ int32_t syscall_dup(struct regs *regs)
     /* Find first free slot */
     for (uint32_t i = 0; i < MAX_FILES; i++) {
         if (!current_process->files_open[i]) {
-            current_process->files_open[i] = fp;
+            FILE *new_fp = malloc(sizeof(FILE));
+            if (!new_fp)
+                return -1;
+            new_fp->flags = fp->flags;
+            new_fp->file = fp->file;
+            if (new_fp->file)
+                new_fp->file->refcount++;
+            if (new_fp->file && new_fp->file->flags == FS_PIPE) {
+                pipe_buf_t *pb = (pipe_buf_t *)new_fp->file->ptr;
+                if (pb) pb->refcount++;
+            }
+            current_process->files_open[i] = new_fp;
             return i;
         }
     }
     return -1; /* no free slots */
+}
+
+/*
+    dup2 — duplicate a file descriptor to a specific fd number.
+    ebx: old fd
+    ecx: new fd
+    Returns: new fd, or -1 on error.
+*/
+int32_t syscall_dup2(struct regs *regs)
+{
+    uint32_t old_fd = regs->ebx;
+    uint32_t new_fd = regs->ecx;
+
+    if (old_fd >= MAX_FILES || new_fd >= MAX_FILES)
+        return -1;
+    if (old_fd == new_fd)
+        return new_fd;
+
+    FILE *fp = current_process->files_open[old_fd];
+    if (!fp)
+        return -1;
+
+    /* Close new_fd if already open */
+    if (current_process->files_open[new_fd]) {
+        struct regs close_regs;
+        close_regs.ebx = new_fd;
+        syscall_close(&close_regs);
+    }
+
+    FILE *new_fp = malloc(sizeof(FILE));
+    if (!new_fp)
+        return -1;
+    new_fp->flags = fp->flags;
+    new_fp->file = fp->file;
+    if (new_fp->file)
+        new_fp->file->refcount++;
+    if (new_fp->file && new_fp->file->flags == FS_PIPE) {
+        pipe_buf_t *pb = (pipe_buf_t *)new_fp->file->ptr;
+        if (pb) pb->refcount++;
+    }
+    current_process->files_open[new_fd] = new_fp;
+    return new_fd;
 }
 
 /*

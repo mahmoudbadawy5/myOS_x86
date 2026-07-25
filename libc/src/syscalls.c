@@ -194,3 +194,10 @@ int sys_munmap(void *addr, unsigned int length)
     __asm__ __volatile__("int $0x80" : "=a"(ret) : "a"(26), "b"(addr), "c"(length) : "memory", "cc");
     return ret;
 }
+
+int sys_dup2(int oldfd, int newfd)
+{
+    int ret;
+    __asm__ __volatile__("int $0x80" : "=a"(ret) : "a"(27), "b"(oldfd), "c"(newfd) : "memory", "cc");
+    return ret;
+}
