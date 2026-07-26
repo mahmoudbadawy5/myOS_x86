@@ -130,6 +130,11 @@ int32_t (*syscalls[MAX_SYSCALLS])(struct regs *) = {
     syscall_mmap,
     syscall_munmap,
     syscall_dup2,
+    syscall_sigreturn,  /* #28 */
+    syscall_signal,     /* #29 */
+    syscall_setpgid,    /* #30 */
+    syscall_waitpid,    /* #31 */
+    syscall_sigprocmask,/* #32 */
 };
 
 void init_syscalls(void)
@@ -270,7 +275,7 @@ int32_t syscall_exit(struct regs *regs)
         kill_children_of(current_process->pid);
 
         current_process->state = PROCESS_STATE_TERMINATED;
-        unblock_parent(current_process->pid);
+        unblock_parent(current_process->pid, 1);
         current_process = NULL;
         schedule(regs);
     }
@@ -396,8 +401,10 @@ int32_t syscall_wait(struct regs *regs)
 
     /* No terminated child — if we have live children, block */
     if (has_live_children(my_pid)) {
+        current_process->waiting_on_pid = 0; /* 0 = wait for any child */
         current_process->state = PROCESS_STATE_BLOCKED;
         schedule(regs);
+        current_process->waiting_on_pid = 0;
         /* schedule() never returns — unblock_parent() writes the
          * child PID directly into our saved trap frame EAX slot */
     }
@@ -460,6 +467,14 @@ int32_t syscall_exec(struct regs *regs)
 
     pcb_t *proc = current_process;
 
+    /* Update proc_name from the path */
+    int name_len = 0;
+    while (path[name_len] && name_len < 19) {
+        proc->proc_name[name_len] = path[name_len];
+        name_len++;
+    }
+    proc->proc_name[name_len] = '\0';
+
     /* Free old address space — switch to kernel dir so we can safely
      * free the child's page tables, then stay on kernel dir.
      * load_program() will clone from kernel dir to build the new one. */
@@ -493,11 +508,26 @@ int32_t syscall_exec(struct regs *regs)
         }
     }
 
+    /* Reset caught signal dispositions to SIG_DFL across exec.
+     * SIG_IGN is preserved per POSIX.  Clear handler frame state. */
+    for (int i = 1; i < NSIG; i++) {
+        if (proc->sig.disposition[i] != SIG_IGN)
+            proc->sig.disposition[i] = SIG_DFL;
+    }
+    proc->sig.in_handler = 0;
+    proc->sig.mask = 0;
+    proc->sig.pending = 0;
+
     /* Set up new page directory + load ELF + argv — shared helper */
     if (load_program(proc, path, argc, argv) != 0) {
-        /* Load failed — process has no valid address space; terminate it */
+        /* Load failed — process has no valid address space.
+         * Can't return to user mode (no pages for iret), so
+         * terminate directly and let the parent's wait() return. */
         proc->state = PROCESS_STATE_TERMINATED;
-        return -1;
+        unblock_parent(proc->pid, 1);
+        schedule(regs);
+        /* schedule never returns */
+        for (;;);
     }
 
     /* load_elf() sets state = PROCESS_STATE_NEW (correct for
@@ -672,7 +702,7 @@ int32_t syscall_kill(struct regs *regs)
     uint32_t target_pid = regs->ebx;
     uint32_t signal = regs->ecx;
 
-    if (target_pid == 0 || signal == 0)
+    if (target_pid == 0 || signal >= NSIG)
         return -1;
 
     pcb_t *target = get_process_by_pid(target_pid);
@@ -682,7 +712,19 @@ int32_t syscall_kill(struct regs *regs)
     if (target->state == PROCESS_STATE_TERMINATED)
         return -1;
 
-    target->signal_pending = signal;
+    /* signal 0: existence check only, don't send anything */
+    if (signal == 0)
+        return 0;
+
+    /* Set the signal bit (bitwise OR — don't overwrite pending signals) */
+    target->sig.pending |= SIG_BIT(signal);
+
+    /* SIGCONT also wakes a stopped process */
+    if (signal == SIGCONT && target->state == PROCESS_STATE_STOPPED) {
+        target->sig.stopped_by = 0;
+        target->state = PROCESS_STATE_READY;
+    }
+
     return 0;
 }
 
@@ -1191,4 +1233,219 @@ int32_t syscall_munmap(struct regs *regs)
 
     /* No matching VMA found */
     return -1;
+}
+
+/*
+    sigreturn — restore the original user context after a signal handler.
+    No arguments. Restores the registers saved when the signal was delivered.
+*/
+int32_t syscall_sigreturn(struct regs *regs)
+{
+    if (!current_process || !current_process->sig.in_handler)
+        return -1;
+
+    /* Save the interrupted EAX before overwriting — it's the return value
+     * the user's code had when the signal interrupted it. */
+    uint32_t saved_eax = current_process->sig.frame.eax;
+
+    /* Restore original user context from saved signal frame */
+    regs->eip     = current_process->sig.frame.eip;
+    regs->useresp = current_process->sig.frame.useresp;
+    regs->eax     = saved_eax;
+    regs->ebx     = current_process->sig.frame.ebx;
+    regs->ecx     = current_process->sig.frame.ecx;
+    regs->edx     = current_process->sig.frame.edx;
+    regs->esi     = current_process->sig.frame.esi;
+    regs->edi     = current_process->sig.frame.edi;
+    regs->ebp     = current_process->sig.frame.ebp;
+    regs->eflags  = current_process->sig.frame.eflags;
+    current_process->sig.in_handler = 0;
+
+    /* Restore signal mask saved before handler execution */
+    current_process->sig.mask = current_process->sig.saved_mask;
+
+    return saved_eax;
+}
+
+/*
+    signal — register a user signal handler.
+    ebx: signal number
+    ecx: handler address (function pointer in user space)
+    Returns: 0 on success, -1 on error.
+*/
+int32_t syscall_signal(struct regs *regs)
+{
+    uint32_t signum = regs->ebx;
+    uint32_t handler = regs->ecx;
+
+    if (!current_process)
+        return -1;
+    if (signum >= NSIG || signum == 0)
+        return -1;
+    /* SIGKILL and SIGSTOP cannot be caught */
+    if (signum == SIGKILL || signum == SIGSTOP)
+        return -1;
+
+    /* Allow SIG_DFL (0) and SIG_IGN (1), reject other non-user addresses */
+    if (handler != SIG_DFL && handler != SIG_IGN && !is_user_ptr((void *)handler))
+        return -1;
+
+    current_process->sig.disposition[signum] = handler;
+    return 0;
+}
+
+/*
+    setpgid — set a process's pgid and the foreground process group for keyboard signal routing.
+    ebx: pid (0 = use pgid directly as foreground group)
+    ecx: pgid
+    Returns: 0 on success, -1 on error.
+*/
+int32_t syscall_setpgid(struct regs *regs)
+{
+    uint32_t pid = regs->ebx;
+    uint32_t pgid = regs->ecx;
+
+    /* pid=0, pgid=0 → reset foreground to shell */
+    if (pid == 0 && pgid == 0) {
+        foreground_pgid = 0;
+        return 0;
+    }
+
+    /* pid=0, pgid=X → set foreground group to X only */
+    if (pid == 0) {
+        foreground_pgid = pgid;
+        return 0;
+    }
+
+    /* pid!=0 → change that process's pgid and set it as foreground */
+    pcb_t *proc = get_process_by_pid(pid);
+    if (!proc)
+        return -1;
+
+    if (pgid == 0)
+        pgid = pid;
+
+    proc->pgid = pgid;
+    foreground_pgid = pgid;
+    return 0;
+}
+
+/*
+    waitpid — wait for a specific child, with optional WNOHANG.
+    ebx: pid (0 = any child)
+    ecx: options (bit 0 = WNOHANG: return immediately if no child exited)
+    Returns: child PID, 0 if WNOHANG and no child ready, -1 on error.
+*/
+int32_t syscall_waitpid(struct regs *regs)
+{
+    if (!current_process)
+        return -1;
+
+    uint32_t req_pid = regs->ebx;
+    uint32_t options = regs->ecx;
+    uint32_t my_pid = current_process->pid;
+
+    /* Try to find a terminated child */
+    uint32_t dead = find_terminated_child(my_pid);
+    if (dead != 0 && (req_pid == 0 || req_pid == dead)) {
+        remove_child_from_parent(current_process, dead);
+        pcb_t *child = get_process_by_pid(dead);
+        if (child)
+            process_cleanup_child(child);
+        regs->eax = dead;
+        return dead;
+    }
+
+    /* WNOHANG: don't block — also check for stopped children */
+    if (options & 1) {
+        uint32_t stopped = find_stopped_child(my_pid);
+        if (stopped != 0 && (req_pid == 0 || req_pid == stopped)) {
+            regs->eax = -(int32_t)stopped;
+            return -(int32_t)stopped;
+        }
+        regs->eax = 0;
+        return 0;
+    }
+
+    /* Blocking: wait for a child (loop until the right one arrives) */
+    current_process->waiting_on_pid = req_pid;
+    while (has_live_children(my_pid)) {
+        /* Re-check for the specific child we're waiting for */
+        uint32_t d = find_terminated_child(my_pid);
+        if (d != 0 && (req_pid == 0 || req_pid == d)) {
+            current_process->waiting_on_pid = 0;
+            remove_child_from_parent(current_process, d);
+            pcb_t *c = get_process_by_pid(d);
+            if (c)
+                process_cleanup_child(c);
+            regs->eax = d;
+            return d;
+        }
+        uint32_t s = find_stopped_child(my_pid);
+        if (s != 0 && (req_pid == 0 || req_pid == s)) {
+            current_process->waiting_on_pid = 0;
+            regs->eax = -(int32_t)s;
+            return -(int32_t)s;
+        }
+        current_process->state = PROCESS_STATE_BLOCKED;
+        schedule(regs);
+    }
+    current_process->waiting_on_pid = 0;
+
+    return -1;
+}
+
+#define SIG_BLOCK   0
+#define SIG_UNBLOCK 1
+#define SIG_SETMASK 2
+
+/*
+    sigprocmask — change the set of blocked signals.
+    ebx: how (SIG_BLOCK=0, SIG_UNBLOCK=1, SIG_SETMASK=2)
+    ecx: pointer to sigset_t (user pointer, may be NULL)
+    edx: pointer to old sigset_t (user pointer, may be NULL)
+    Returns: 0 on success, -1 on error.
+*/
+int32_t syscall_sigprocmask(struct regs *regs)
+{
+    if (!current_process)
+        return -1;
+
+    uint32_t how = regs->ebx;
+    uint32_t *user_set = (uint32_t *)regs->ecx;
+    uint32_t *user_oldset = (uint32_t *)regs->edx;
+
+    if (how > SIG_SETMASK)
+        return -1;
+
+    /* Write back old mask if requested */
+    if (user_oldset) {
+        if (!is_user_ptr(user_oldset))
+            return -1;
+        *user_oldset = current_process->sig.mask;
+    }
+
+    /* Apply new mask */
+    if (user_set) {
+        if (!is_user_ptr(user_set))
+            return -1;
+        uint32_t new_set = *user_set;
+
+        /* SIGKILL and SIGSTOP cannot be blocked */
+        new_set &= ~(SIG_BIT(SIGKILL) | SIG_BIT(SIGSTOP));
+
+        switch (how) {
+            case SIG_BLOCK:
+                current_process->sig.mask |= new_set;
+                break;
+            case SIG_UNBLOCK:
+                current_process->sig.mask &= ~new_set;
+                break;
+            case SIG_SETMASK:
+                current_process->sig.mask = new_set;
+                break;
+        }
+    }
+
+    return 0;
 }

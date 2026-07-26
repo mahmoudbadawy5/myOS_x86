@@ -1,4 +1,4 @@
-#include <test.h>
+#include <unistd.h>
 #include <syscalls.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -42,7 +42,7 @@ int main(int argc, char **argv)
         if (!data) { print("grep: out of memory\n"); return 1; }
         char buf[512];
         int n;
-        while ((n = sys_read_fd(0, buf, sizeof(buf))) > 0) {
+        while ((n = read(0, buf, sizeof(buf))) > 0) {
             while (total + n > capacity) {
                 capacity *= 2;
                 char *tmp = realloc(data, capacity);
@@ -71,9 +71,9 @@ int main(int argc, char **argv)
                         }
                     }
                     if (match) {
-                        sys_write(data + line_start, line_len);
-                        if (line_len > 0 && data[line_start + line_len - 1] != '\n')
-                            sys_write("\n", 1);
+                        write(1, data + line_start, line_len);
+                        if (line_len == 0 || data[line_start + line_len - 1] != '\n')
+                            write(1, "\n", 1);
                         found = 1;
                         break;
                     }

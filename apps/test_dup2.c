@@ -1,4 +1,4 @@
-#include <test.h>
+#include <unistd.h>
 
 int main(void)
 {
@@ -13,7 +13,7 @@ int main(void)
         print(" FAIL\n");
         return 1;
     }
-    sys_close(20);
+    close(20);
 
     /* Test dup2 replacing existing fd */
     print("  dup2(0, 20)...");
@@ -23,7 +23,7 @@ int main(void)
     } else {
         print(" FAIL\n");
     }
-    sys_close(20);
+    close(20);
 
     /* Test dup2 same fd */
     print("  dup2(1, 1)...");
@@ -48,7 +48,7 @@ int main(void)
     print("  dup2(1,20) + print...");
     dup2(1, 20);
     print("OK\n");
-    sys_close(20);
+    close(20);
 
     /* Test fork + dup2 child writes to parent's stdout */
     print("  fork + dup2...");
@@ -56,7 +56,7 @@ int main(void)
     if (pid == 0) {
         /* Child: dup2 stdout to something, write */
         dup2(1, 15);
-        sys_close(15);
+        close(15);
         print(" child OK\n");
         exit(0);
     }

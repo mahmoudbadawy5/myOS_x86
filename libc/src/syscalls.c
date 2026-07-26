@@ -201,3 +201,43 @@ int sys_dup2(int oldfd, int newfd)
     __asm__ __volatile__("int $0x80" : "=a"(ret) : "a"(27), "b"(oldfd), "c"(newfd) : "memory", "cc");
     return ret;
 }
+
+void sys_yield(void)
+{
+    __asm__ __volatile__("int $0x80" : : "a"(6) : "memory", "cc");
+}
+
+int sys_sigreturn(void)
+{
+    int ret;
+    __asm__ __volatile__("int $0x80" : "=a"(ret) : "a"(28) : "memory", "cc");
+    return ret;
+}
+
+int sys_signal(int signum, void *handler)
+{
+    int ret;
+    __asm__ __volatile__("int $0x80" : "=a"(ret) : "a"(29), "b"(signum), "c"(handler) : "memory", "cc");
+    return ret;
+}
+
+int sys_setpgid(int pid, int pgid)
+{
+    int ret;
+    __asm__ __volatile__("int $0x80" : "=a"(ret) : "a"(30), "b"(pid), "c"(pgid) : "memory", "cc");
+    return ret;
+}
+
+int sys_waitpid(int pid, int options)
+{
+    int ret;
+    __asm__ __volatile__("int $0x80" : "=a"(ret) : "a"(31), "b"(pid), "c"(options) : "memory", "cc");
+    return ret;
+}
+
+int sys_sigprocmask(int how, unsigned int *set, unsigned int *oldset)
+{
+    int ret;
+    __asm__ __volatile__("int $0x80" : "=a"(ret) : "a"(32), "b"(how), "c"(set), "d"(oldset) : "memory", "cc");
+    return ret;
+}

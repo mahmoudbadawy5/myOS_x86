@@ -30,5 +30,11 @@ int sys_fork(void);
 void *sys_mmap(void *addr, unsigned int length, int flags, int fd, int offset);
 int sys_munmap(void *addr, unsigned int length);
 int sys_dup2(int oldfd, int newfd);
+void sys_yield(void);
+int sys_sigreturn(void);
+int sys_signal(int signum, void *handler);
+int sys_setpgid(int pid, int pgid);
+int sys_waitpid(int pid, int options);
+int sys_sigprocmask(int how, unsigned int *set, unsigned int *oldset);
 
 #endif

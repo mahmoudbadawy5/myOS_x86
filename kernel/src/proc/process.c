@@ -18,6 +18,85 @@ static uint32_t next_pid = 1;
 static uint32_t num_processes = 0, cur_proccess_id = -1;
 
 pcb_t *current_process = NULL;
+uint32_t foreground_pgid = 0; /* 0 = shell is foreground (no child running) */
+
+/*
+ * Signal trampoline: a small code page mapped into every process at
+ * SIGNAL_TRAMPOLINE_VADDR.  When a signal handler returns, it pops the
+ * return address which points here.  The trampoline executes the
+ * sigreturn syscall (#28) which restores the original user context.
+ */
+static uint32_t signal_trampoline_phys = 0;  /* Physical page address */
+
+extern char signal_trampoline_start[];
+extern char signal_trampoline_end[];
+
+void init_signal_trampoline(void)
+{
+    /* Allocate one physical page for the trampoline code */
+    signal_trampoline_phys = (uint32_t)alloc_blocks(1);
+    if (!signal_trampoline_phys) return;
+
+    /* Map it into kernel virtual address space so we can write the code */
+    uint32_t virt = signal_trampoline_phys + KERNEL_VIRTUAL_BASE;
+    memset((void *)virt, 0, 4096);
+
+    /* Copy the assembler-generated trampoline code into the page */
+    uint32_t len = (uint32_t)(signal_trampoline_end - signal_trampoline_start);
+    memcpy((void *)virt, (const unsigned char *)signal_trampoline_start, len);
+}
+
+void map_signal_trampoline(uint32_t *page_dir)
+{
+    if (!signal_trampoline_phys) return;
+
+    /* Temporarily switch to the target page directory to map the page */
+    uint32_t old_cr3;
+    __asm__ __volatile__("mov %%cr3, %0" : "=r"(old_cr3));
+    set_page_dir(page_dir);
+
+    map_address_user((void *)SIGNAL_TRAMPOLINE_VADDR, (void *)signal_trampoline_phys);
+
+    /* Restore original page directory */
+    set_page_dir((uint32_t *)old_cr3);
+}
+
+/* Initialize signal-related PCB fields.
+ * If parent is NULL: defaults (SIG_DFL, no blocked signals).
+ * If parent is non-NULL: inherit pgid, sigmask, dispositions from parent. */
+static void init_process_signals(pcb_t *pcb, pcb_t *parent)
+{
+    pcb->sig.pending = 0;
+    pcb->sig.stopped_by = 0;
+    pcb->sig.saved_mask = 0;
+    pcb->sig.in_handler = 0;
+    pcb->waiting_on_pid = 0;
+    if (parent) {
+        pcb->pgid = parent->pgid;
+        pcb->sig.mask = parent->sig.mask;
+        for (int i = 0; i < NSIG; i++)
+            pcb->sig.disposition[i] = parent->sig.disposition[i];
+    } else {
+        pcb->pgid = pcb->pid;
+        pcb->sig.mask = 0;
+        for (int i = 0; i < NSIG; i++)
+            pcb->sig.disposition[i] = SIG_DFL;
+        pcb->sig.disposition[SIGCHLD] = SIG_IGN;
+    }
+}
+
+/* Allocate and set up a kernel stack for a process.
+ * Returns 0 on failure, non-zero on success. */
+static int alloc_kernel_stack(pcb_t *pcb)
+{
+    uint32_t kstack_virt = (uint32_t)malloc(KERNEL_STACK_SIZE);
+    if (!kstack_virt) return 0;
+    pcb->kernel_stack_alloc = kstack_virt;
+    pcb->kernel_stack_bottom = kstack_virt;
+    uint32_t kstack_base = kstack_virt + KERNEL_STACK_SIZE;
+    pcb->kernel_stack_top = (kstack_base - 32) & ~0xF;
+    return 1;
+}
 
 /* Idle loop — runs when no other process is available.
  * Executes in ring 0 (kernel mode) via IRET with CS=0x08. */
@@ -52,8 +131,8 @@ void init_multitasking(void)
     idle->pid = 0;
     idle->state = PROCESS_STATE_NEW;
     idle->parent_id = 0;
-    idle->signal_pending = 0;
     idle->num_children = 0;
+    init_process_signals(idle, NULL);
     idle->proc_name[0] = 'i';
     idle->proc_name[1] = 'd';
     idle->proc_name[2] = 'l';
@@ -62,22 +141,16 @@ void init_multitasking(void)
     idle->cwd[0] = '/';
     idle->cwd[1] = '\0';
 
-    /* Allocate kernel stack for idle */
-    uint32_t kstack_virt = (uint32_t)malloc(KERNEL_STACK_SIZE);
-    idle->kernel_stack_alloc = kstack_virt;
-    idle->kernel_stack_bottom = kstack_virt;
-    uint32_t kstack_base = kstack_virt + KERNEL_STACK_SIZE;
-    uint32_t iret_frame = (kstack_base - 32) & ~0xF;
-    idle->kernel_stack_top = iret_frame;
+    alloc_kernel_stack(idle);
 
     /* Build IRET frame: EIP=idle_loop, CS=0x08 (kernel), EFLAGS=IF=1,
      * ESP=kernel stack top, SS=0x10 (kernel data).
      * Idle runs in ring 0 — no user segments needed. */
-    uint32_t *frame = (uint32_t *)iret_frame;
+    uint32_t *frame = (uint32_t *)idle->kernel_stack_top;
     frame[0] = (uint32_t)idle_loop;  /* EIP */
     frame[1] = 0x08;                 /* CS (kernel code) */
     frame[2] = 0x202;                /* EFLAGS (IF=1) */
-    frame[3] = iret_frame;           /* ESP (use same stack) */
+    frame[3] = idle->kernel_stack_top;  /* ESP (use same stack) */
     frame[4] = 0x10;                 /* SS (kernel data) */
 
     /* Set up registers with kernel segments */
@@ -116,6 +189,9 @@ int load_program(pcb_t *proc, const char *path, int argc, const char **argv)
         vmm_free_directory(new_dir);
         return -1;
     }
+
+    /* Map the signal trampoline page into the new process */
+    map_signal_trampoline(new_dir);
 
     if (argc > 0 && argv) {
         uint32_t stack_top = USER_STACK_TOP - 16;
@@ -179,8 +255,8 @@ void create_process(const char *app_path, uint32_t parent_pid, int argc, const c
     pcb->pid = next_pid++;
     pcb->state = PROCESS_STATE_BLOCKED;
     pcb->parent_id = parent_pid;
-    pcb->signal_pending = 0;
     pcb->num_children = 0;
+    init_process_signals(pcb, NULL);
     pcb->files_open[0] = malloc(sizeof(FILE));
     pcb->files_open[0]->file = stdin_node;
     pcb->files_open[0]->flags = FILE_READ;
@@ -208,13 +284,11 @@ void create_process(const char *app_path, uint32_t parent_pid, int argc, const c
         }
     }
 
-    uint32_t kstack_virt = (uint32_t) malloc(KERNEL_STACK_SIZE);
-    pcb->kernel_stack_alloc = kstack_virt;
-    pcb->kernel_stack_bottom = kstack_virt;
-
-    uint32_t kstack_base = kstack_virt + KERNEL_STACK_SIZE;
-    uint32_t iret_frame = (kstack_base - 32) & ~0xF;
-    pcb->kernel_stack_top = iret_frame;
+    if (!alloc_kernel_stack(pcb)) {
+        free(pcb->files_open[0]);
+        free(pcb->files_open[1]);
+        return;
+    }
 
     /* Increment parent's child count BEFORE load so it's always accurate */
     if (parent_pid != 0) {
@@ -259,10 +333,127 @@ void schedule(struct regs *r)
     /* Check for pending signals on the current process */
     if (cur_proccess_id != -1) {
         pcb_t *cur = &process_table[cur_proccess_id];
-        if (cur->signal_pending != 0 && cur->state == PROCESS_STATE_RUNNING) {
-            cur->state = PROCESS_STATE_TERMINATED;
-            cur->signal_pending = 0;
-            unblock_parent(cur->pid);
+        if (cur->sig.pending != 0 && cur->state == PROCESS_STATE_RUNNING
+            && !cur->sig.in_handler) {
+            uint32_t pending = cur->sig.pending;
+
+            /* SIGKILL is unblockable — always kills */
+            if (pending & SIG_BIT(SIGKILL)) {
+                cur->state = PROCESS_STATE_TERMINATED;
+                cur->sig.pending = 0;
+                unblock_parent(cur->pid, 1);
+            } else {
+                /* Process one signal at a time */
+                for (int sig = 1; sig < NSIG; sig++) {
+                    if (!(pending & SIG_BIT(sig))) continue;
+
+                    /* Check mask — blocked signals are deferred */
+                    if (cur->sig.mask & SIG_BIT(sig))
+                        continue;
+
+                    uint32_t disp = cur->sig.disposition[sig];
+
+                    if (sig == SIGCONT) {
+                        /* SIGCONT: resume if stopped, always clear pending */
+                        cur->sig.pending &= ~SIG_BIT(sig);
+                        if (cur->sig.stopped_by) {
+                            cur->sig.stopped_by = 0;
+                            cur->state = PROCESS_STATE_READY;
+                        }
+                        continue; /* Check for more pending signals */
+                    }
+
+                    if (sig == SIGSTOP) {
+                        /* SIGSTOP: cannot be caught or ignored, always stops */
+                        cur->sig.pending &= ~SIG_BIT(sig);
+                        cur->sig.stopped_by = SIGSTOP;
+                        cur->state = PROCESS_STATE_STOPPED;
+                        unblock_parent(cur->pid, 0);
+                        break;
+                    }
+
+                    if (disp == SIG_IGN) {
+                        cur->sig.pending &= ~SIG_BIT(sig);
+                        continue;
+                    }
+
+                    if (disp == SIG_DFL) {
+                        /* Default actions */
+                        if (sig == SIGTSTP || sig == SIGTTIN || sig == SIGTTOU) {
+                            cur->sig.pending &= ~SIG_BIT(sig);
+                            cur->sig.stopped_by = sig;
+                            cur->state = PROCESS_STATE_STOPPED;
+                            unblock_parent(cur->pid, 0);
+                            break;
+                        }
+                        if (sig == SIGCHLD) {
+                            /* Default: ignore */
+                            cur->sig.pending &= ~SIG_BIT(sig);
+                            continue;
+                        }
+                        /* Default: terminate */
+                        cur->sig.pending &= ~SIG_BIT(sig);
+                        cur->state = PROCESS_STATE_TERMINATED;
+                        unblock_parent(cur->pid, 1);
+                        break;
+                    }
+
+                    /* User handler address — set up a signal frame and jump there.
+                     *
+                     * Signal frame on user stack:
+                     *   [useresp-4] = signum              (argument to handler)
+                     *   [useresp-8] = trampoline address  (return address → sigreturn)
+                     *
+                     * Then redirect EIP to the handler.  When the handler returns,
+                     * it pops the trampoline address and jumps there.  The trampoline
+                     * calls sigreturn (syscall #28) which restores the original context.
+                     */
+                    {
+                        uint32_t handler_addr = disp;
+
+                        /* Save original user context into signal frame */
+                        cur->sig.frame.eip     = r->eip;
+                        cur->sig.frame.useresp = r->useresp;
+                        cur->sig.frame.eax     = r->eax;
+                        cur->sig.frame.ebx     = r->ebx;
+                        cur->sig.frame.ecx     = r->ecx;
+                        cur->sig.frame.edx     = r->edx;
+                        cur->sig.frame.esi     = r->esi;
+                        cur->sig.frame.edi     = r->edi;
+                        cur->sig.frame.ebp     = r->ebp;
+                        cur->sig.frame.eflags  = r->eflags;
+                        cur->sig.in_handler = 1;
+
+                        /* Auto-block the signal being delivered (prevent re-entrant delivery) */
+                        cur->sig.saved_mask = cur->sig.mask;
+                        cur->sig.mask |= SIG_BIT(sig);
+
+                        /* Push signal frame onto user stack */
+                        uint32_t new_esp = r->useresp;
+                        new_esp -= 4;
+                        /* Validate the stack range is in user space and mapped */
+                        if (new_esp < USER_CODE_BASE || new_esp + 8 > USER_STACK_TOP) {
+                            /* Invalid stack — kill the process */
+                            cur->sig.mask = cur->sig.saved_mask;
+                            cur->state = PROCESS_STATE_TERMINATED;
+                            unblock_parent(cur->pid, 1);
+                            break;
+                        }
+                        *((uint32_t *)new_esp) = sig;                              /* arg: signum */
+                        new_esp -= 4;
+                        *((uint32_t *)new_esp) = SIGNAL_TRAMPOLINE_VADDR;         /* return addr → sigreturn */
+
+                        /* Modify the trap frame so iret jumps to the handler */
+                        r->useresp = new_esp;
+                        r->eip     = handler_addr;
+                        /* First argument (signum) in ebx for cdecl calling convention */
+                        r->ebx     = sig;
+
+                        cur->sig.pending &= ~SIG_BIT(sig);
+                        break;
+                    }
+                }
+            }
         }
     }
 
@@ -272,8 +463,10 @@ void schedule(struct regs *r)
     int original_process_id = cur_proccess_id;
     do {
         cur_proccess_id = (cur_proccess_id + 1) % num_processes;
-        if(process_table[cur_proccess_id].state == PROCESS_STATE_READY || process_table[cur_proccess_id].state == PROCESS_STATE_NEW) break;
-    } while(cur_proccess_id != original_process_id);
+        pcb_t *p = &process_table[cur_proccess_id];
+        if (p->state == PROCESS_STATE_READY || p->state == PROCESS_STATE_NEW)
+            break;
+    } while (cur_proccess_id != original_process_id);
 
     pcb_t *next = &process_table[cur_proccess_id];
     if (next->state == PROCESS_STATE_TERMINATED) {
@@ -329,14 +522,30 @@ uint32_t find_terminated_child(uint32_t parent_pid)
     return 0;
 }
 
-/* Returns 1 if `parent_pid` has live (non-terminated) children */
+/* Returns PID of a stopped child of `parent_pid`, or 0 if none */
+uint32_t find_stopped_child(uint32_t parent_pid)
+{
+    pcb_t *parent = get_process_by_pid(parent_pid);
+    if (!parent) return 0;
+    for (uint32_t i = 0; i < parent->num_children; i++) {
+        pcb_t *child = get_process_by_pid(parent->children_id[i]);
+        if (child && child->state == PROCESS_STATE_STOPPED)
+            return child->pid;
+    }
+    return 0;
+}
+
+/* Returns 1 if `parent_pid` has non-terminated, non-stopped children.
+ * Stopped children don't count — wait() without WUNTRACED won't return
+ * for them, so blocking on them would hang forever. */
 int has_live_children(uint32_t parent_pid)
 {
     pcb_t *parent = get_process_by_pid(parent_pid);
     if (!parent) return 0;
     for (uint32_t i = 0; i < parent->num_children; i++) {
         pcb_t *child = get_process_by_pid(parent->children_id[i]);
-        if (child && child->state != PROCESS_STATE_TERMINATED)
+        if (child && child->state != PROCESS_STATE_TERMINATED &&
+            child->state != PROCESS_STATE_STOPPED)
             return 1;
     }
     return 0;
@@ -347,6 +556,10 @@ int has_live_children(uint32_t parent_pid)
  * children list. Switches to kernel page directory for cleanup. */
 void process_cleanup_child(pcb_t *child)
 {
+    /* Reset signal state so stale signals don't leak into reused slots */
+    child->sig.pending = 0;
+    child->sig.stopped_by = 0;
+
     /* Free kernel stack */
     if (child->kernel_stack_alloc) {
         free((void *)child->kernel_stack_alloc);
@@ -412,8 +625,8 @@ pcb_t *fork_process(pcb_t *parent, struct regs *regs)
     child->pid = next_pid++;
     child->state = PROCESS_STATE_BLOCKED;
     child->parent_id = parent->pid;
-    child->signal_pending = 0;
     child->num_children = 0;
+    init_process_signals(child, parent);
 
     /* Copy proc_name */
     for (int i = 0; i < 19; i++)
@@ -428,17 +641,10 @@ pcb_t *fork_process(pcb_t *parent, struct regs *regs)
     }
     child->cwd[ci] = '\0';
 
-    /* Allocate new kernel stack */
-    uint32_t kstack_virt = (uint32_t)malloc(KERNEL_STACK_SIZE);
-    if (!kstack_virt) {
-        parent->num_children--;
+    if (!alloc_kernel_stack(child)) {
         child->state = PROCESS_STATE_TERMINATED;
         return NULL;
     }
-    child->kernel_stack_alloc = kstack_virt;
-    child->kernel_stack_bottom = kstack_virt;
-    uint32_t kstack_base = kstack_virt + KERNEL_STACK_SIZE;
-    child->kernel_stack_top = (kstack_base - 32) & ~0xF;
 
     /* Register child in parent's children list */
     parent->children_id[parent->num_children] = child->pid;
@@ -553,20 +759,23 @@ pcb_t *fork_process(pcb_t *parent, struct regs *regs)
  * When the parent is NOT blocked (child exited before parent
  * called wait), the child stays in the list as a zombie for
  * syscall_wait's immediate-reap path to clean up. */
-void unblock_parent(uint32_t child_pid)
+void unblock_parent(uint32_t child_pid, int cleanup)
 {
     pcb_t *child = get_process_by_pid(child_pid);
     if (!child) return;
 
     pcb_t *parent = get_process_by_pid(child->parent_id);
-    if (parent && parent->state == PROCESS_STATE_BLOCKED) {
-        remove_child_from_parent(parent, child_pid);
+    if (parent && parent->state == PROCESS_STATE_BLOCKED &&
+        (parent->waiting_on_pid == 0 || parent->waiting_on_pid == child_pid)) {
+        if (cleanup) {
+            /* Terminated: remove from children list and clean up */
+            remove_child_from_parent(parent, child_pid);
+        }
+        /* Stopped: keep in children list so waitpid/fg/bg can find it */
         uint32_t *tf = (uint32_t *)parent->regs.esp;
         tf[11] = child_pid; /* EAX is at offset 44 / sizeof(uint32_t) = 11 */
         parent->state = PROCESS_STATE_READY;
-        /* Don't free the active process's stack/page-dir — it's still
-         * running until switch_to_process swaps it out. */
-        if (child != current_process)
+        if (cleanup && child != current_process)
             process_cleanup_child(child);
     }
 }

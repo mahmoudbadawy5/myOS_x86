@@ -1,17 +1,17 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-#include <test.h>
+#include <unistd.h>
 #include <syscalls.h>
 
 static void test_file_io(void)
 {
     const char *path = "/hello.txt";
 
-    printf("[pid %d] Opening %s\n", sys_getpid(), path);
+    printf("[pid %d] Opening %s\n", getpid(), path);
     FILE *fp = fopen(path, "r");
     if (!fp) {
-        printf("[pid %d] FAIL: cannot open %s\n", sys_getpid(), path);
+        printf("[pid %d] FAIL: cannot open %s\n", getpid(), path);
         return;
     }
 
@@ -19,13 +19,13 @@ static void test_file_io(void)
     int n = fread(buf, 1, 63, fp);
     if (n > 0) {
         buf[n] = '\0';
-        printf("[pid %d] Read %d bytes: \"%s\"\n", sys_getpid(), n, buf);
+        printf("[pid %d] Read %d bytes: \"%s\"\n", getpid(), n, buf);
     } else {
-        printf("[pid %d] Read returned %d\n", sys_getpid(), n);
+        printf("[pid %d] Read returned %d\n", getpid(), n);
     }
 
     fclose(fp);
-    printf("[pid %d] File closed OK\n", sys_getpid());
+    printf("[pid %d] File closed OK\n", getpid());
 }
 
 int main(void)
@@ -39,7 +39,7 @@ int main(void)
 
     /* Fork */
     printf("-- forking --\n");
-    int child_pid = sys_fork();
+    int child_pid = fork();
 
     if (child_pid < 0) {
         printf("FAIL: fork returned %d\n", child_pid);
@@ -48,18 +48,18 @@ int main(void)
 
     if (child_pid == 0) {
         /* Child */
-        printf("[child] I am PID %d, fork returned %d\n", sys_getpid(), child_pid);
+        printf("[child] I am PID %d, fork returned %d\n", getpid(), child_pid);
         test_file_io();
         printf("[child] Done\n");
-        sys_exit(0);
+        exit(0);
     }
 
     /* Parent */
-    printf("[parent] Fork returned child PID %d, my PID is %d\n", child_pid, sys_getpid());
+    printf("[parent] Fork returned child PID %d, my PID is %d\n", child_pid, getpid());
     test_file_io();
 
     printf("[parent] Waiting for child %d...\n", child_pid);
-    int waited = sys_wait();
+    int waited = wait();
     printf("[parent] wait() returned %d\n", waited);
 
     printf("\n=== All tests passed! ===\n");
