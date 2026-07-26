@@ -9,6 +9,7 @@
 #define USER_STACK_TOP  0xA0000000
 #define USER_STACK_PAGES 4
 #define KERNEL_STACK_SIZE (2 * 4096)
+#define SIGNAL_TRAMPOLINE_VADDR 0x7FFFE000  /* Fixed user-space address for signal trampoline */
 
 /* Signal infrastructure */
 #define NSIG        32
@@ -85,6 +86,19 @@ typedef struct pcb {
     uint32_t kernel_stack_alloc;        /* Base of malloc'd kernel stack (for free) */
     uint32_t kernel_stack_bottom;       /* Lowest mapped page of kernel stack */
     char cwd[256];                      /* Current working directory */
+
+    /* Signal handler frame — saved user context for sigreturn */
+    uint32_t in_signal;                 /* 1 = currently inside signal handler */
+    uint32_t signal_frame_eip;
+    uint32_t signal_frame_useresp;
+    uint32_t signal_frame_eax;
+    uint32_t signal_frame_ebx;
+    uint32_t signal_frame_ecx;
+    uint32_t signal_frame_edx;
+    uint32_t signal_frame_esi;
+    uint32_t signal_frame_edi;
+    uint32_t signal_frame_ebp;
+    uint32_t signal_frame_eflags;
 } pcb_t;
 
 /* Foreground process group — keyboard sends signals here */
@@ -103,6 +117,9 @@ void remove_child_from_parent(pcb_t *parent, uint32_t child_pid);
 void kill_children_of(uint32_t parent_pid);
 void process_cleanup_child(pcb_t *child);
 pcb_t *fork_process(pcb_t *parent, struct regs *regs);
+
+void init_signal_trampoline(void);
+void map_signal_trampoline(uint32_t *page_dir);
 
 extern pcb_t *current_process;
 extern pcb_t process_table[];

@@ -20,6 +20,47 @@ static uint32_t num_processes = 0, cur_proccess_id = -1;
 pcb_t *current_process = NULL;
 uint32_t foreground_pgid = 0; /* 0 = shell is foreground (no child running) */
 
+/*
+ * Signal trampoline: a small code page mapped into every process at
+ * SIGNAL_TRAMPOLINE_VADDR.  When a signal handler returns, it pops the
+ * return address which points here.  The trampoline executes the
+ * sigreturn syscall (#28) which restores the original user context.
+ */
+static uint32_t signal_trampoline_phys = 0;  /* Physical page address */
+
+extern char signal_trampoline_start[];
+extern char signal_trampoline_end[];
+
+void init_signal_trampoline(void)
+{
+    /* Allocate one physical page for the trampoline code */
+    signal_trampoline_phys = (uint32_t)alloc_blocks(1);
+    if (!signal_trampoline_phys) return;
+
+    /* Map it into kernel virtual address space so we can write the code */
+    uint32_t virt = signal_trampoline_phys + KERNEL_VIRTUAL_BASE;
+    memset((void *)virt, 0, 4096);
+
+    /* Copy the assembler-generated trampoline code into the page */
+    uint32_t len = (uint32_t)(signal_trampoline_end - signal_trampoline_start);
+    memcpy((void *)virt, (const unsigned char *)signal_trampoline_start, len);
+}
+
+void map_signal_trampoline(uint32_t *page_dir)
+{
+    if (!signal_trampoline_phys) return;
+
+    /* Temporarily switch to the target page directory to map the page */
+    uint32_t old_cr3;
+    __asm__ __volatile__("mov %%cr3, %0" : "=r"(old_cr3));
+    set_page_dir(page_dir);
+
+    map_address_user((void *)SIGNAL_TRAMPOLINE_VADDR, (void *)signal_trampoline_phys);
+
+    /* Restore original page directory */
+    set_page_dir((uint32_t *)old_cr3);
+}
+
 /* Initialize signal-related PCB fields.
  * If parent is NULL: defaults (SIG_DFL, no blocked signals).
  * If parent is non-NULL: inherit pgid, sigmask, dispositions from parent. */
@@ -145,6 +186,9 @@ int load_program(pcb_t *proc, const char *path, int argc, const char **argv)
         vmm_free_directory(new_dir);
         return -1;
     }
+
+    /* Map the signal trampoline page into the new process */
+    map_signal_trampoline(new_dir);
 
     if (argc > 0 && argv) {
         uint32_t stack_top = USER_STACK_TOP - 16;
@@ -348,12 +392,48 @@ void schedule(struct regs *r)
                         break;
                     }
 
-                    /* User handler address — for now, treat as kill.
-                     * Phase 3 will set up a signal frame and jump there. */
-                    cur->signal_pending &= ~SIG_BIT(sig);
-                    cur->state = PROCESS_STATE_TERMINATED;
-                    unblock_parent(cur->pid);
-                    break;
+                    /* User handler address — set up a signal frame and jump there.
+                     *
+                     * Signal frame on user stack:
+                     *   [useresp-4] = signum              (argument to handler)
+                     *   [useresp-8] = trampoline address  (return address → sigreturn)
+                     *
+                     * Then redirect EIP to the handler.  When the handler returns,
+                     * it pops the trampoline address and jumps there.  The trampoline
+                     * calls sigreturn (syscall #28) which restores the original context.
+                     */
+                    {
+                        uint32_t handler_addr = disp;
+
+                        /* Save original user context into signal frame */
+                        cur->signal_frame_eip     = r->eip;
+                        cur->signal_frame_useresp = r->useresp;
+                        cur->signal_frame_eax     = r->eax;
+                        cur->signal_frame_ebx     = r->ebx;
+                        cur->signal_frame_ecx     = r->ecx;
+                        cur->signal_frame_edx     = r->edx;
+                        cur->signal_frame_esi     = r->esi;
+                        cur->signal_frame_edi     = r->edi;
+                        cur->signal_frame_ebp     = r->ebp;
+                        cur->signal_frame_eflags  = r->eflags;
+                        cur->in_signal = 1;
+
+                        /* Push signal frame onto user stack */
+                        uint32_t new_esp = r->useresp;
+                        new_esp -= 4;
+                        *((uint32_t *)new_esp) = sig;                              /* arg: signum */
+                        new_esp -= 4;
+                        *((uint32_t *)new_esp) = SIGNAL_TRAMPOLINE_VADDR;         /* return addr → sigreturn */
+
+                        /* Modify the trap frame so iret jumps to the handler */
+                        r->useresp = new_esp;
+                        r->eip     = handler_addr;
+                        /* First argument (signum) in ebx for cdecl calling convention */
+                        r->ebx     = sig;
+
+                        cur->signal_pending &= ~SIG_BIT(sig);
+                        break;
+                    }
                 }
             }
         }

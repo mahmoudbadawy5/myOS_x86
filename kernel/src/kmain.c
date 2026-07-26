@@ -325,6 +325,8 @@ void kmain(unsigned long magic, multiboot_info_t *mbd)
     init_multitasking();
     printf("\x1b\x02OK\x1b\x0F]\n");
 
+    init_signal_trampoline();
+
     printf("Kernel loaded at %08ux, ends at: %08ux\n", kstart, kend);
 
     //print_mmap(mbd);

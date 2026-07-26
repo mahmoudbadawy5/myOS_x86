@@ -11,6 +11,13 @@ int getpid(void)            { return sys_getpid(); }
 int kill(int pid, int sig)  { return sys_kill(pid, sig); }
 void yield(void)            { sys_yield(); }
 
+/* Signals */
+sighandler_t signal(int signum, sighandler_t handler) {
+    sys_signal(signum, (void *)handler);
+    return handler;
+}
+int sigreturn(void) { return sys_sigreturn(); }
+
 /* File descriptors */
 int open(const char *path, const char *mode) { return sys_open(path, mode); }
 int close(int fd)           { return sys_close(fd); }

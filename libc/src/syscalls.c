@@ -206,3 +206,17 @@ void sys_yield(void)
 {
     __asm__ __volatile__("int $0x80" : : "a"(6) : "memory", "cc");
 }
+
+int sys_sigreturn(void)
+{
+    int ret;
+    __asm__ __volatile__("int $0x80" : "=a"(ret) : "a"(28) : "memory", "cc");
+    return ret;
+}
+
+int sys_signal(int signum, void *handler)
+{
+    int ret;
+    __asm__ __volatile__("int $0x80" : "=a"(ret) : "a"(29), "b"(signum), "c"(handler) : "memory", "cc");
+    return ret;
+}

@@ -101,6 +101,9 @@ void resolve_path(const char *user_path, char *buf, int buf_size)
     buf[ci] = '\0';
 }
 
+int32_t syscall_sigreturn(struct regs *regs);
+int32_t syscall_signal(struct regs *regs);
+
 int32_t (*syscalls[MAX_SYSCALLS])(struct regs *) = {
     syscall_test0,
     syscall_test1,
@@ -130,6 +133,8 @@ int32_t (*syscalls[MAX_SYSCALLS])(struct regs *) = {
     syscall_mmap,
     syscall_munmap,
     syscall_dup2,
+    syscall_sigreturn,  /* #28 */
+    syscall_signal,     /* #29 */
 };
 
 void init_syscalls(void)
@@ -1199,4 +1204,53 @@ int32_t syscall_munmap(struct regs *regs)
 
     /* No matching VMA found */
     return -1;
+}
+
+/*
+    sigreturn — restore the original user context after a signal handler.
+    No arguments. Restores the registers saved when the signal was delivered.
+*/
+int32_t syscall_sigreturn(struct regs *regs)
+{
+    (void)regs;
+    if (!current_process || !current_process->in_signal)
+        return -1;
+
+    /* Restore original user context from saved signal frame */
+    regs->eip     = current_process->signal_frame_eip;
+    regs->useresp = current_process->signal_frame_useresp;
+    regs->eax     = current_process->signal_frame_eax;
+    regs->ebx     = current_process->signal_frame_ebx;
+    regs->ecx     = current_process->signal_frame_ecx;
+    regs->edx     = current_process->signal_frame_edx;
+    regs->esi     = current_process->signal_frame_esi;
+    regs->edi     = current_process->signal_frame_edi;
+    regs->ebp     = current_process->signal_frame_ebp;
+    regs->eflags  = current_process->signal_frame_eflags;
+    current_process->in_signal = 0;
+
+    return 0;
+}
+
+/*
+    signal — register a user signal handler.
+    ebx: signal number
+    ecx: handler address (function pointer in user space)
+    Returns: 0 on success, -1 on error.
+*/
+int32_t syscall_signal(struct regs *regs)
+{
+    uint32_t signum = regs->ebx;
+    uint32_t handler = regs->ecx;
+
+    if (!current_process)
+        return -1;
+    if (signum >= NSIG || signum == 0)
+        return -1;
+    /* SIGKILL and SIGSTOP cannot be caught */
+    if (signum == SIGKILL || signum == SIGSTOP)
+        return -1;
+
+    current_process->signal_disposition[signum] = handler;
+    return 0;
 }

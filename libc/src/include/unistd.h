@@ -13,6 +13,11 @@ int getpid(void);
 int kill(int pid, int signal);
 void yield(void);
 
+/* Signals */
+typedef void (*sighandler_t)(int signum);
+sighandler_t signal(int signum, sighandler_t handler);
+int sigreturn(void);
+
 /* File descriptors */
 int open(const char *path, const char *mode);
 int close(int fd);
