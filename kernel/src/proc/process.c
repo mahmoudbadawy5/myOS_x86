@@ -66,19 +66,20 @@ void map_signal_trampoline(uint32_t *page_dir)
  * If parent is non-NULL: inherit pgid, sigmask, dispositions from parent. */
 static void init_process_signals(pcb_t *pcb, pcb_t *parent)
 {
-    pcb->signal_pending = 0;
-    pcb->stopped_by = 0;
+    pcb->sig.pending = 0;
+    pcb->sig.stopped_by = 0;
+    pcb->sig.saved_mask = 0;
     if (parent) {
         pcb->pgid = parent->pgid;
-        pcb->sigmask = parent->sigmask;
+        pcb->sig.mask = parent->sig.mask;
         for (int i = 0; i < NSIG; i++)
-            pcb->signal_disposition[i] = parent->signal_disposition[i];
+            pcb->sig.disposition[i] = parent->sig.disposition[i];
     } else {
         pcb->pgid = pcb->pid;
-        pcb->sigmask = 0;
+        pcb->sig.mask = 0;
         for (int i = 0; i < NSIG; i++)
-            pcb->signal_disposition[i] = SIG_DFL;
-        pcb->signal_disposition[SIGCHLD] = SIG_IGN;
+            pcb->sig.disposition[i] = SIG_DFL;
+        pcb->sig.disposition[SIGCHLD] = SIG_IGN;
     }
 }
 
@@ -330,13 +331,13 @@ void schedule(struct regs *r)
     /* Check for pending signals on the current process */
     if (cur_proccess_id != -1) {
         pcb_t *cur = &process_table[cur_proccess_id];
-        if (cur->signal_pending != 0 && cur->state == PROCESS_STATE_RUNNING) {
-            uint32_t pending = cur->signal_pending;
+        if (cur->sig.pending != 0 && cur->state == PROCESS_STATE_RUNNING) {
+            uint32_t pending = cur->sig.pending;
 
             /* SIGKILL is unblockable — always kills */
             if (pending & SIG_BIT(SIGKILL)) {
                 cur->state = PROCESS_STATE_TERMINATED;
-                cur->signal_pending = 0;
+                cur->sig.pending = 0;
                 unblock_parent(cur->pid, 1);
             } else {
                 /* Process one signal at a time */
@@ -344,16 +345,16 @@ void schedule(struct regs *r)
                     if (!(pending & SIG_BIT(sig))) continue;
 
                     /* Check mask — blocked signals are deferred */
-                    if (cur->sigmask & SIG_BIT(sig))
+                    if (cur->sig.mask & SIG_BIT(sig))
                         continue;
 
-                    uint32_t disp = cur->signal_disposition[sig];
+                    uint32_t disp = cur->sig.disposition[sig];
 
                     if (sig == SIGCONT) {
                         /* SIGCONT: resume if stopped, always clear pending */
-                        cur->signal_pending &= ~SIG_BIT(sig);
-                        if (cur->stopped_by) {
-                            cur->stopped_by = 0;
+                        cur->sig.pending &= ~SIG_BIT(sig);
+                        if (cur->sig.stopped_by) {
+                            cur->sig.stopped_by = 0;
                             cur->state = PROCESS_STATE_READY;
                         }
                         continue; /* Check for more pending signals */
@@ -361,34 +362,34 @@ void schedule(struct regs *r)
 
                     if (sig == SIGSTOP) {
                         /* SIGSTOP: cannot be caught or ignored, always stops */
-                        cur->signal_pending &= ~SIG_BIT(sig);
-                        cur->stopped_by = SIGSTOP;
+                        cur->sig.pending &= ~SIG_BIT(sig);
+                        cur->sig.stopped_by = SIGSTOP;
                         cur->state = PROCESS_STATE_STOPPED;
                         unblock_parent(cur->pid, 0);
                         break;
                     }
 
                     if (disp == SIG_IGN) {
-                        cur->signal_pending &= ~SIG_BIT(sig);
+                        cur->sig.pending &= ~SIG_BIT(sig);
                         continue;
                     }
 
                     if (disp == SIG_DFL) {
                         /* Default actions */
                         if (sig == SIGTSTP || sig == SIGTTIN || sig == SIGTTOU) {
-                            cur->signal_pending &= ~SIG_BIT(sig);
-                            cur->stopped_by = sig;
+                            cur->sig.pending &= ~SIG_BIT(sig);
+                            cur->sig.stopped_by = sig;
                             cur->state = PROCESS_STATE_STOPPED;
                             unblock_parent(cur->pid, 0);
                             break;
                         }
                         if (sig == SIGCHLD) {
                             /* Default: ignore */
-                            cur->signal_pending &= ~SIG_BIT(sig);
+                            cur->sig.pending &= ~SIG_BIT(sig);
                             continue;
                         }
                         /* Default: terminate */
-                        cur->signal_pending &= ~SIG_BIT(sig);
+                        cur->sig.pending &= ~SIG_BIT(sig);
                         cur->state = PROCESS_STATE_TERMINATED;
                         unblock_parent(cur->pid, 1);
                         break;
@@ -408,17 +409,21 @@ void schedule(struct regs *r)
                         uint32_t handler_addr = disp;
 
                         /* Save original user context into signal frame */
-                        cur->signal_frame_eip     = r->eip;
-                        cur->signal_frame_useresp = r->useresp;
-                        cur->signal_frame_eax     = r->eax;
-                        cur->signal_frame_ebx     = r->ebx;
-                        cur->signal_frame_ecx     = r->ecx;
-                        cur->signal_frame_edx     = r->edx;
-                        cur->signal_frame_esi     = r->esi;
-                        cur->signal_frame_edi     = r->edi;
-                        cur->signal_frame_ebp     = r->ebp;
-                        cur->signal_frame_eflags  = r->eflags;
-                        cur->in_signal = 1;
+                        cur->sig.frame.eip     = r->eip;
+                        cur->sig.frame.useresp = r->useresp;
+                        cur->sig.frame.eax     = r->eax;
+                        cur->sig.frame.ebx     = r->ebx;
+                        cur->sig.frame.ecx     = r->ecx;
+                        cur->sig.frame.edx     = r->edx;
+                        cur->sig.frame.esi     = r->esi;
+                        cur->sig.frame.edi     = r->edi;
+                        cur->sig.frame.ebp     = r->ebp;
+                        cur->sig.frame.eflags  = r->eflags;
+                        cur->sig.in_handler = 1;
+
+                        /* Auto-block the signal being delivered (prevent re-entrant delivery) */
+                        cur->sig.saved_mask = cur->sig.mask;
+                        cur->sig.mask |= SIG_BIT(sig);
 
                         /* Push signal frame onto user stack */
                         uint32_t new_esp = r->useresp;
@@ -433,7 +438,7 @@ void schedule(struct regs *r)
                         /* First argument (signum) in ebx for cdecl calling convention */
                         r->ebx     = sig;
 
-                        cur->signal_pending &= ~SIG_BIT(sig);
+                        cur->sig.pending &= ~SIG_BIT(sig);
                         break;
                     }
                 }
@@ -541,8 +546,8 @@ int has_live_children(uint32_t parent_pid)
 void process_cleanup_child(pcb_t *child)
 {
     /* Reset signal state so stale signals don't leak into reused slots */
-    child->signal_pending = 0;
-    child->stopped_by = 0;
+    child->sig.pending = 0;
+    child->sig.stopped_by = 0;
 
     /* Free kernel stack */
     if (child->kernel_stack_alloc) {

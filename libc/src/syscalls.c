@@ -234,3 +234,10 @@ int sys_waitpid(int pid, int options)
     __asm__ __volatile__("int $0x80" : "=a"(ret) : "a"(31), "b"(pid), "c"(options) : "memory", "cc");
     return ret;
 }
+
+int sys_sigprocmask(int how, unsigned int *set, unsigned int *oldset)
+{
+    int ret;
+    __asm__ __volatile__("int $0x80" : "=a"(ret) : "a"(32), "b"(how), "c"(set), "d"(oldset) : "memory", "cc");
+    return ret;
+}

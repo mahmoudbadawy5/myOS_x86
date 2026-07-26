@@ -20,7 +20,7 @@ Bare-metal educational OS for i686, cross-compiled with i686-elf-gcc.
 ### Architecture
 - x86/i686 only, GCC `__attribute__((cdecl))` calling convention
 - Syscall via `int $0x80`, EAX=number, args in EBX/ECX/EDX
-- 32 syscalls (#0-#31): see `kernel/src/include/arch/syscalls.h`
+- 33 syscalls (#0-#32): see `kernel/src/include/arch/syscalls.h`
 - VGA text mode, serial output
 - FAT12 on IDE, initrd (tar-like)
 
@@ -31,11 +31,13 @@ Bare-metal educational OS for i686, cross-compiled with i686-elf-gcc.
 - `SIGNAL_TRAMPOLINE_VADDR = 0x7FFFE000`
 - NSIG=32, SIGKILL=9, SIGSTOP=17, SIGCONT=18, SIGINT=2, SIGTSTP=20
 
-### Signal Infrastructure (Phase 2+3)
+### Signal Infrastructure (Phase 2+3+7)
 - Trampoline: `kernel/src/proc/signal_trampoline.asm` (mapped into every process)
 - Signal delivery in `schedule()` modifies the trap frame (`struct regs *r`) directly
-- `syscall_sigreturn` (#28) restores from PCB's `signal_frame_*` fields
+- `syscall_sigreturn` (#28) restores from PCB's `signal_frame_*` fields + restores saved_sigmask
 - `syscall_signal` (#29) registers user handlers in `signal_disposition[]`
+- `syscall_sigprocmask` (#32) — SIG_BLOCK/SIG_UNBLOCK/SIG_SETMASK, user pointer validation
+- Auto-block current signal during handler: `saved_sigmask` saved, signal blocked, restored on sigreturn
 - Handler calling convention: signum in EBX, return to trampoline → sigreturn
 
 ### Job Control (Phase 4+5+6 — complete)
@@ -52,13 +54,10 @@ Bare-metal educational OS for i686, cross-compiled with i686-elf-gcc.
 - Background jobs: `cmd &`, `jobs`/`fg`/`bg` builtins, job ID tracking
 - `reap_background_jobs()` cleans up terminated background jobs each prompt
 
-### Remaining Signal Phases
-- **Phase 7 — Signal masks**: `sigprocmask` syscall, block/unblock signals, auto-block signal during handler execution (prevent re-entrant delivery)
-
 ### Process Model
 - `struct regs` (ISR trap frame) vs `registers_t` (PCB storage) — different layouts
 - `switch_to_process` saves trap frame pointer in `PCB_OFFSET_REGS_ESP`, restores via direct stack restore (not memcpy)
 - PCB fields: `process.h`, functions: `process.c`
 
 ### Branch
-- `feat-signals`: Phase 1+2+3+4+5+6 signal work in progress
+- `feat-signals`: Phase 1+2+3+4+5+6+7 signal work — COMPLETE

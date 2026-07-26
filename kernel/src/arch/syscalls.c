@@ -105,6 +105,7 @@ int32_t syscall_sigreturn(struct regs *regs);
 int32_t syscall_signal(struct regs *regs);
 int32_t syscall_setpgid(struct regs *regs);
 int32_t syscall_waitpid(struct regs *regs);
+int32_t syscall_sigprocmask(struct regs *regs);
 
 int32_t (*syscalls[MAX_SYSCALLS])(struct regs *) = {
     syscall_test0,
@@ -139,6 +140,7 @@ int32_t (*syscalls[MAX_SYSCALLS])(struct regs *) = {
     syscall_signal,     /* #29 */
     syscall_setpgid,    /* #30 */
     syscall_waitpid,    /* #31 */
+    syscall_sigprocmask,/* #32 */
 };
 
 void init_syscalls(void)
@@ -709,11 +711,11 @@ int32_t syscall_kill(struct regs *regs)
         return 0;
 
     /* Set the signal bit (bitwise OR — don't overwrite pending signals) */
-    target->signal_pending |= SIG_BIT(signal);
+    target->sig.pending |= SIG_BIT(signal);
 
     /* SIGCONT also wakes a stopped process */
     if (signal == SIGCONT && target->state == PROCESS_STATE_STOPPED) {
-        target->stopped_by = 0;
+        target->sig.stopped_by = 0;
         target->state = PROCESS_STATE_READY;
     }
 
@@ -1234,21 +1236,24 @@ int32_t syscall_munmap(struct regs *regs)
 int32_t syscall_sigreturn(struct regs *regs)
 {
     (void)regs;
-    if (!current_process || !current_process->in_signal)
+    if (!current_process || !current_process->sig.in_handler)
         return -1;
 
     /* Restore original user context from saved signal frame */
-    regs->eip     = current_process->signal_frame_eip;
-    regs->useresp = current_process->signal_frame_useresp;
-    regs->eax     = current_process->signal_frame_eax;
-    regs->ebx     = current_process->signal_frame_ebx;
-    regs->ecx     = current_process->signal_frame_ecx;
-    regs->edx     = current_process->signal_frame_edx;
-    regs->esi     = current_process->signal_frame_esi;
-    regs->edi     = current_process->signal_frame_edi;
-    regs->ebp     = current_process->signal_frame_ebp;
-    regs->eflags  = current_process->signal_frame_eflags;
-    current_process->in_signal = 0;
+    regs->eip     = current_process->sig.frame.eip;
+    regs->useresp = current_process->sig.frame.useresp;
+    regs->eax     = current_process->sig.frame.eax;
+    regs->ebx     = current_process->sig.frame.ebx;
+    regs->ecx     = current_process->sig.frame.ecx;
+    regs->edx     = current_process->sig.frame.edx;
+    regs->esi     = current_process->sig.frame.esi;
+    regs->edi     = current_process->sig.frame.edi;
+    regs->ebp     = current_process->sig.frame.ebp;
+    regs->eflags  = current_process->sig.frame.eflags;
+    current_process->sig.in_handler = 0;
+
+    /* Restore signal mask saved before handler execution */
+    current_process->sig.mask = current_process->sig.saved_mask;
 
     return 0;
 }
@@ -1272,7 +1277,7 @@ int32_t syscall_signal(struct regs *regs)
     if (signum == SIGKILL || signum == SIGSTOP)
         return -1;
 
-    current_process->signal_disposition[signum] = handler;
+    current_process->sig.disposition[signum] = handler;
     return 0;
 }
 
@@ -1356,4 +1361,59 @@ int32_t syscall_waitpid(struct regs *regs)
     }
 
     return -1;
+}
+
+#define SIG_BLOCK   0
+#define SIG_UNBLOCK 1
+#define SIG_SETMASK 2
+
+/*
+    sigprocmask — change the set of blocked signals.
+    ebx: how (SIG_BLOCK=0, SIG_UNBLOCK=1, SIG_SETMASK=2)
+    ecx: pointer to sigset_t (user pointer, may be NULL)
+    edx: pointer to old sigset_t (user pointer, may be NULL)
+    Returns: 0 on success, -1 on error.
+*/
+int32_t syscall_sigprocmask(struct regs *regs)
+{
+    if (!current_process)
+        return -1;
+
+    uint32_t how = regs->ebx;
+    uint32_t *user_set = (uint32_t *)regs->ecx;
+    uint32_t *user_oldset = (uint32_t *)regs->edx;
+
+    if (how > SIG_SETMASK)
+        return -1;
+
+    /* Write back old mask if requested */
+    if (user_oldset) {
+        if (!is_user_ptr(user_oldset))
+            return -1;
+        *user_oldset = current_process->sig.mask;
+    }
+
+    /* Apply new mask */
+    if (user_set) {
+        if (!is_user_ptr(user_set))
+            return -1;
+        uint32_t new_set = *user_set;
+
+        /* SIGKILL and SIGSTOP cannot be blocked */
+        new_set &= ~(SIG_BIT(SIGKILL) | SIG_BIT(SIGSTOP));
+
+        switch (how) {
+            case SIG_BLOCK:
+                current_process->sig.mask |= new_set;
+                break;
+            case SIG_UNBLOCK:
+                current_process->sig.mask &= ~new_set;
+                break;
+            case SIG_SETMASK:
+                current_process->sig.mask = new_set;
+                break;
+        }
+    }
+
+    return 0;
 }

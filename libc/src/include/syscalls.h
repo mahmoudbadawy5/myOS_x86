@@ -35,5 +35,6 @@ int sys_sigreturn(void);
 int sys_signal(int signum, void *handler);
 int sys_setpgid(int pid, int pgid);
 int sys_waitpid(int pid, int options);
+int sys_sigprocmask(int how, unsigned int *set, unsigned int *oldset);
 
 #endif

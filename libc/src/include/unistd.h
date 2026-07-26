@@ -28,6 +28,14 @@ void yield(void);
 typedef void (*sighandler_t)(int signum);
 sighandler_t signal(int signum, sighandler_t handler);
 int sigreturn(void);
+
+/* Signal masks */
+typedef unsigned int sigset_t;
+#define SIG_BLOCK    0  /* Block signals in set */
+#define SIG_UNBLOCK  1  /* Unblock signals in set */
+#define SIG_SETMASK  2  /* Set mask to exactly set */
+int sigprocmask(int how, const sigset_t *set, sigset_t *oldset);
+
 int setpgid(int pid, int pgid);
 int waitpid(int pid, int options);
 #define WNOHANG 1

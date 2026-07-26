@@ -156,7 +156,7 @@ void keyboard_handler(struct regs *r)
                 for (int i = 0; i < MAX_PROCESSES; i++) {
                     if (process_table[i].pgid == foreground_pgid &&
                         process_table[i].state != PROCESS_STATE_TERMINATED) {
-                        process_table[i].signal_pending |= SIG_BIT(SIGINT);
+                        process_table[i].sig.pending |= SIG_BIT(SIGINT);
                     }
                 }
             }
@@ -172,7 +172,7 @@ void keyboard_handler(struct regs *r)
                 for (int i = 0; i < MAX_PROCESSES; i++) {
                     if (process_table[i].pgid == foreground_pgid &&
                         process_table[i].state != PROCESS_STATE_TERMINATED) {
-                        process_table[i].signal_pending |= SIG_BIT(SIGTSTP);
+                        process_table[i].sig.pending |= SIG_BIT(SIGTSTP);
                     }
                 }
             }

@@ -56,6 +56,17 @@ typedef struct {
     uint32_t cs, ds, es, fs, gs, ss;
 } registers_t;
 
+/* Per-process signal state — grouped for clarity */
+typedef struct {
+    uint32_t pending;                   /* Pending signals bitmask */
+    uint32_t disposition[NSIG];         /* SIG_DFL, SIG_IGN, or handler address */
+    uint32_t mask;                      /* Blocked signals bitmask */
+    uint32_t saved_mask;                /* Saved mask during signal handler execution */
+    uint32_t stopped_by;                /* Signal that stopped us (0 = not stopped) */
+    uint32_t in_handler;                /* 1 = currently inside signal handler */
+    struct regs frame;                  /* Saved user context for sigreturn */
+} signal_state_t;
+
 typedef struct vma {
     uint32_t start;        // virtual address start (page-aligned)
     uint32_t end;          // virtual address end   (page-aligned, exclusive)
@@ -75,10 +86,7 @@ typedef struct pcb {
     uint32_t children_id[MAX_PROCESSES];
     uint32_t parent_id;
 
-    uint32_t signal_pending;            /* Pending signals bitmask */
-    uint32_t signal_disposition[NSIG];  /* SIG_DFL, SIG_IGN, or handler address */
-    uint32_t sigmask;                   /* Blocked signals bitmask */
-    uint32_t stopped_by;                /* Signal that stopped us (0 = not stopped) */
+    signal_state_t sig;                 /* All signal-related state */
 
     uint32_t pgid;                      /* Process group ID */
     uint32_t num_children;              /* Number of live children */
@@ -86,19 +94,6 @@ typedef struct pcb {
     uint32_t kernel_stack_alloc;        /* Base of malloc'd kernel stack (for free) */
     uint32_t kernel_stack_bottom;       /* Lowest mapped page of kernel stack */
     char cwd[256];                      /* Current working directory */
-
-    /* Signal handler frame — saved user context for sigreturn */
-    uint32_t in_signal;                 /* 1 = currently inside signal handler */
-    uint32_t signal_frame_eip;
-    uint32_t signal_frame_useresp;
-    uint32_t signal_frame_eax;
-    uint32_t signal_frame_ebx;
-    uint32_t signal_frame_ecx;
-    uint32_t signal_frame_edx;
-    uint32_t signal_frame_esi;
-    uint32_t signal_frame_edi;
-    uint32_t signal_frame_ebp;
-    uint32_t signal_frame_eflags;
 } pcb_t;
 
 /* Foreground process group — keyboard sends signals here */

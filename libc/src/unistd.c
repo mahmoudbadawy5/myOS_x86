@@ -17,6 +17,9 @@ sighandler_t signal(int signum, sighandler_t handler) {
     return handler;
 }
 int sigreturn(void) { return sys_sigreturn(); }
+int sigprocmask(int how, const sigset_t *set, sigset_t *oldset) {
+    return sys_sigprocmask(how, (unsigned int *)set, (unsigned int *)oldset);
+}
 int setpgid(int pid, int pgid) { return sys_setpgid(pid, pgid); }
 int waitpid(int pid, int options) { return sys_waitpid(pid, options); }
 
