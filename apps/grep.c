@@ -72,7 +72,7 @@ int main(int argc, char **argv)
                     }
                     if (match) {
                         write(1, data + line_start, line_len);
-                        if (line_len > 0 && data[line_start + line_len - 1] != '\n')
+                        if (line_len == 0 || data[line_start + line_len - 1] != '\n')
                             write(1, "\n", 1);
                         found = 1;
                         break;

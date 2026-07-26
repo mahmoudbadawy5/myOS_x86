@@ -7,7 +7,7 @@
 | Phase 3: Userspace Utilities | DONE | [PHASE3_UTILITIES.md](PHASE3_UTILITIES.md) |
 | Phase 4: Ring 3 Process Hardening | DONE | [RING3_INFRA.md](RING3_INFRA.md) |
 | Phase 5: Dynamic Library Support | DONE | [DYNAMIC_LIBS.md](DYNAMIC_LIBS.md) |
-| Phase 6: Job Control & Signals | PLANNED | [JOB_CONTROL.md](JOB_CONTROL.md) |
+| Phase 6: Job Control & Signals | DONE | [JOB_CONTROL.md](JOB_CONTROL.md) |
 
 ---
 
@@ -499,7 +499,7 @@ This is actually the same as the current crt0 — it just doesn't go into libc.s
 
 ---
 
-## Phase 6: Job Control & Signal Handling (PLANNED)
+## Phase 6: Job Control & Signal Handling (DONE)
 
 ### Summary
 Wire together signals, process groups, and shell job tracking to support `Ctrl+C`/`Ctrl+Z` for foreground process groups, background jobs with `&`, and `jobs`/`fg`/`bg` builtins.
@@ -508,20 +508,21 @@ Wire together signals, process groups, and shell job tracking to support `Ctrl+C
 - `sigreturn` (#28) — return from signal handler
 - `signal(signum, handler)` (#29) — register userland signal handler
 - `setpgid(pid, pgid)` (#30) — set process group
-- `getpgrp()` (#31) — get current process group
-- `waitpid(pid, status, options)` (#32) — wait for specific child
+- `waitpid(pid, options)` (#31) — wait for specific child
+- `sigprocmask(how, set, oldset)` (#32) — block/unblock signals
 
 ### Key changes
-- PCB gains `pgid`, `signal_disposition[NSIG]`, `sigmask`, `stopped_by`
+- PCB gains `pgid`, `signal_state_t sig` (disposition, mask, pending, stopped_by)
 - Scheduler signal check rewritten: ignore/stop/continue/catch per signal type
 - Keyboard handler sends signals to foreground process group (not just `current_process`)
 - Shell parses `&`, tracks jobs, implements `jobs`/`fg`/`bg`
-- Background processes that read stdin get SIGTTIN (stopped)
+- Signal masks: auto-block during handler, sigprocmask for user control
 
 ### Implementation order
 1. Signal constants & PCB fields
 2. Signal delivery in scheduler (SIGSTOP/SIGCONT/SIGKILL/SIGINT)
 3. Userland signal delivery (signal frame on stack, sigreturn)
-4. Process groups & foreground tracking (setpgid, getpgrp, keyboard fix)
+4. Process groups & foreground tracking (setpgid, keyboard fix)
 5. Shell job control (parse `&`, job list, builtins)
 6. SIGCHLD & non-blocking wait (waitpid with WNOHANG)
+7. Signal masks (sigprocmask, auto-block during handler)

@@ -109,18 +109,12 @@ int main(void)
     /* Clean up file */
     unlink("/mnt/sigmask.txt");
 
-    /* --- Test 3: Auto-block during handler --- */
-    print("[3] Handler re-raises SIGINT -> should NOT recurse\n");
+    /* --- Test 3: Verify mask restored after handler returns --- */
+    print("[3] Verify signal mask restored after sigreturn\n");
 
-    /* We need a second signal to test auto-blocking.
-     * Reset handler count and register a handler that sends SIGINT to self */
     handler_calls = 0;
-    /* The existing handler doesn't self-raise, so the auto-block test
-     * is implicit: if the handler is called while SIGINT is auto-blocked,
-     * the re-sent signal stays pending and gets delivered after sigreturn.
-     * Let's test with kill() inside handler. */
 
-    /* For now just verify the mask is clean after handler returns */
+    /* Verify the mask is clean after handler returns */
     sigset_t check = 0;
     sigprocmask(SIG_SETMASK, 0, &check);
     print("  mask after sigreturn: ");

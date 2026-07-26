@@ -4,14 +4,15 @@
 
 - OS boots, shell runs, apps dynamically linked via libc.so/libmath.so
 - fork/wait/exec/pipes/dup2/redirection all working
-- `signal_pending` field exists on PCB (single int, no handler table)
-- `kill(pid, sig)` syscall exists (#13) — sets signal_pending, no type checking
-- Ctrl+C handler in keyboard driver sends SIGINT to `current_process` only
-- **Any non-zero signal kills the process unconditionally** (checked in `schedule()`)
-- No process groups, no foreground/background, no SIGCHLD, no SIGTSTP/SIGCONT
-- No userland signal delivery (no `signal()`/`sigaction()` syscall)
-- Terminal is a single global keyboard buffer — all processes read from it
-- Shell is fully synchronous — waits for every child before prompting again
+- Signal infrastructure complete: per-process signal disposition, delivery via schedule(), sigreturn
+- `signal()` syscall (#29) — userland signal handlers
+- `sigprocmask()` syscall (#32) — block/unblock signals
+- `setpgid()` syscall (#30) — process groups, foreground tracking
+- `waitpid()` syscall (#31) — wait for specific child, WNOHANG
+- Ctrl+C / Ctrl+Z in keyboard handler send signals to foreground process group
+- Shell ignores SIGINT/SIGTSTP, children reset to SIG_DFL before exec
+- Background jobs: `cmd &`, `jobs`/`fg`/`bg` builtins
+- Signal masks: auto-block during handler, sigprocmask for user control
 
 ## Architecture
 
@@ -45,7 +46,7 @@ Each process has a disposition table per signal:
 | SIGSTOP | 17 | Stop | **No** |
 | SIGCONT | 18 | Continue | Yes |
 | SIGTSTP | 20 | Stop | Yes |
-| SIGCHLD | 17 | Ignore | Yes |
+| SIGCHLD | 19 | Ignore | Yes |
 | SIGPIPE | 13 | Kill | Yes |
 | SIGALRM | 14 | Kill | Yes |
 
@@ -100,7 +101,7 @@ Ctrl+C / Ctrl+Z / Ctrl+\ no longer target `current_process` directly. Instead:
 #define SIGTERM  15
 #define SIGSTOP  17
 #define SIGCONT  18
-#define SIGCHLD  17
+#define SIGCHLD  19
 #define SIGTSTP  20
 #define SIGTTIN  21
 #define SIGTTOU  22
@@ -204,7 +205,7 @@ int32_t syscall_sigreturn(struct regs *regs) {
 }
 ```
 
-Update: `MAX_SYSCALLS = 29`, `MAX_SYSCALL EQU 28` in ASM, add to syscall table and libc wrappers.
+Update: `MAX_SYSCALLS = 33`, `MAX_SYSCALL EQU 32` in ASM, add to syscall table and libc wrappers.
 
 ### Validation
 
@@ -236,9 +237,11 @@ Update: `MAX_SYSCALLS = 29`, `MAX_SYSCALL EQU 28` in ASM, add to syscall table a
 int32_t syscall_signal(struct regs *regs) {
     uint32_t signum = regs->ebx;
     uint32_t handler = regs->ecx;
-    if (signum >= NSIG || signum == SIGKILL || signum == SIGSTOP)
+    if (signum >= NSIG || signum == 0 || signum == SIGKILL || signum == SIGSTOP)
         return -1;
-    current_process->signal_disposition[signum] = handler;
+    if (handler != SIG_DFL && handler != SIG_IGN && !is_user_ptr((void *)handler))
+        return -1;
+    current_process->sig.disposition[signum] = handler;
     return 0;
 }
 ```
@@ -317,18 +320,14 @@ Write a test app that:
 int32_t syscall_setpgid(struct regs *regs) {
     uint32_t pid = regs->ebx;
     uint32_t pgid = regs->ecx;
-    pcb_t *proc = pid ? get_process_by_pid(pid) : current_process;
+    if (pid == 0 && pgid == 0) { foreground_pgid = 0; return 0; }
+    if (pid == 0) { foreground_pgid = pgid; return 0; }
+    pcb_t *proc = get_process_by_pid(pid);
     if (!proc) return -1;
-    if (pgid == 0) pgid = proc->pid; /* Use pid as pgid */
+    if (pgid == 0) pgid = pid;
     proc->pgid = pgid;
+    foreground_pgid = pgid;
     return 0;
-}
-```
-
-**`getpgrp()` — syscall #31**
-```c
-int32_t syscall_getpgrp(struct regs *regs) {
-    return current_process ? current_process->pgid : -1;
 }
 ```
 
@@ -519,47 +518,55 @@ Test scenarios:
 | `libc/src/syscalls.c` | Add `waitpid()` wrapper |
 | `libc/src/include/test.h` | Add `waitpid()` declaration |
 
-### New syscall: `waitpid(pid, status, options)` — syscall #32
+### New syscall: `waitpid(pid, options)` — syscall #31
 
 ```c
 int32_t syscall_waitpid(struct regs *regs) {
-    int pid = (int)regs->ebx;      /* -1 = any child, >0 = specific PID */
-    int *status = (int *)regs->ecx; /* Exit status output */
-    int options = (int)regs->edx;   /* WNOHANG=1, WUNTRACED=2 */
-
+    uint32_t req_pid = regs->ebx;     /* 0 = any child, >0 = specific PID */
+    uint32_t options = regs->ecx;     /* WNOHANG=1 */
     uint32_t my_pid = current_process->pid;
 
     /* Check for terminated child matching pid */
-    uint32_t dead = find_terminated_child_filtered(my_pid, pid);
-    if (dead != 0) {
+    uint32_t dead = find_terminated_child(my_pid);
+    if (dead != 0 && (req_pid == 0 || req_pid == dead)) {
         remove_child_from_parent(current_process, dead);
         pcb_t *child = get_process_by_pid(dead);
-        if (child) {
-            if (status) *status = 0; /* TODO: actual exit status */
-            process_cleanup_child(child);
-        }
+        if (child) process_cleanup_child(child);
         return dead;
     }
 
-    /* Check for stopped child (WUNTRACED) */
-    if (options & 2) {
-        uint32_t stopped = find_stopped_child(my_pid, pid);
-        if (stopped != 0) {
-            if (status) *status = process_table[stopped].stopped_by;
-            return stopped;
-        }
-    }
+    /* WNOHANG: return 0 immediately */
+    if (options & 1) return 0;
 
-    /* WNOHANG: return 0 immediately if no child ready */
-    if (options & 1)
-        return 0;
-
-    /* Block until a child matches */
-    if (has_live_children(my_pid)) {
+    /* Block until the requested child exits */
+    current_process->waiting_on_pid = req_pid;
+    while (has_live_children(my_pid)) {
+        /* re-check terminated/stopped */
+        ...
         current_process->state = PROCESS_STATE_BLOCKED;
         schedule(regs);
     }
     return -1;
+}
+```
+
+### New syscall: `sigprocmask(how, set, oldset)` — syscall #32
+
+```c
+int32_t syscall_sigprocmask(struct regs *regs) {
+    uint32_t how = regs->ebx;
+    sigset_t *set = (sigset_t *)regs->ecx;
+    sigset_t *oldset = (sigset_t *)regs->edx;
+    if (oldset) *oldset = current_process->sig.mask;
+    if (set) {
+        uint32_t new_set = *set & ~(SIG_BIT(SIGKILL) | SIG_BIT(SIGSTOP));
+        switch (how) {
+            case SIG_BLOCK:   current_process->sig.mask |= new_set; break;
+            case SIG_UNBLOCK: current_process->sig.mask &= ~new_set; break;
+            case SIG_SETMASK: current_process->sig.mask = new_set; break;
+        }
+    }
+    return 0;
 }
 ```
 
@@ -576,14 +583,13 @@ int waitpid(int pid, int *status, int options) {
 Before each prompt:
 ```c
 /* Reap any finished background children (non-blocking) */
-int status;
 int pid;
-while ((pid = waitpid(-1, &status, 1)) > 0) {
-    remove_job_by_pgid(pid);
-    print("[Done] PID ");
-    print_int(pid);
-    print("\n");
+while ((pid = waitpid(0, WNOHANG)) > 0) {
+    int idx = find_job_by_pid(pid);
+    if (idx >= 0)
+        jobs[idx].status = JOB_DONE;
 }
+compact_jobs();
 ```
 
 ### Validation
@@ -601,13 +607,14 @@ while ((pid = waitpid(-1, &status, 1)) > 0) {
 | 1 | Signal constants & PCB fields | — | — |
 | 2 | Signal delivery in scheduler | 1 | sigreturn (#28) |
 | 3 | Userland signal delivery | 2 | signal (#29) |
-| 4 | Process groups & foreground | 1 | setpgid (#30), getpgrp (#31) |
+| 4 | Process groups & foreground | 1 | setpgid (#30) |
 | 5 | Shell job control | 2, 3, 4 | — |
-| 6 | SIGCHLD & non-blocking wait | 5 | waitpid (#32) |
+| 6 | SIGCHLD & non-blocking wait | 5 | waitpid (#31) |
+| 7 | Signal masks | 2 | sigprocmask (#32) |
 
-**Total new syscalls**: 5 (sigreturn, signal, setpgid, getpgrp, waitpid)
+**Total new syscalls**: 5 (sigreturn, signal, setpgid, waitpid, sigprocmask)
 **New process states**: PROCESS_STATE_STOPPED (or reuse BLOCKED with `stopped_by`)
-**New PCB fields**: pgid, signal_disposition[], sigmask, stopped_by
+**New PCB fields**: pgid, signal_disposition[], sigmask, stopped_by, sig (signal_state_t)
 **New shell builtins**: jobs, fg, bg
 
 ## Testing Checklist

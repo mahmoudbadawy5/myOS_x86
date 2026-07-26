@@ -7,6 +7,19 @@
 #include <fs/vfs.h>
 #include <proc/process.h>
 
+/* Send a signal to all processes in the foreground process group */
+static void send_signal_to_foreground(int sig)
+{
+    if (foreground_pgid) {
+        for (int i = 0; i < MAX_PROCESSES; i++) {
+            if (process_table[i].pgid == foreground_pgid &&
+                process_table[i].state != PROCESS_STATE_TERMINATED) {
+                process_table[i].sig.pending |= SIG_BIT(sig);
+            }
+        }
+    }
+}
+
 /* PS/2 keyboard scancodes (make codes, set 1) */
 #define SCANCODE_ESC       0x01
 #define SCANCODE_BACKSPACE 0x0E
@@ -152,14 +165,7 @@ void keyboard_handler(struct regs *r)
         /* Ctrl+C: send SIGINT (signal 2) to foreground process group */
         if (ctrl && scancode == SCANCODE_KEY_C)
         {
-            if (foreground_pgid) {
-                for (int i = 0; i < MAX_PROCESSES; i++) {
-                    if (process_table[i].pgid == foreground_pgid &&
-                        process_table[i].state != PROCESS_STATE_TERMINATED) {
-                        process_table[i].sig.pending |= SIG_BIT(SIGINT);
-                    }
-                }
-            }
+            send_signal_to_foreground(SIGINT);
             outportb(0x20, 0x20);
             schedule(r);
             return;
@@ -168,14 +174,7 @@ void keyboard_handler(struct regs *r)
         /* Ctrl+Z: send SIGTSTP (signal 20) to foreground process group */
         if (ctrl && scancode == SCANCODE_KEY_Z)
         {
-            if (foreground_pgid) {
-                for (int i = 0; i < MAX_PROCESSES; i++) {
-                    if (process_table[i].pgid == foreground_pgid &&
-                        process_table[i].state != PROCESS_STATE_TERMINATED) {
-                        process_table[i].sig.pending |= SIG_BIT(SIGTSTP);
-                    }
-                }
-            }
+            send_signal_to_foreground(SIGTSTP);
             outportb(0x20, 0x20);
             schedule(r);
             return;

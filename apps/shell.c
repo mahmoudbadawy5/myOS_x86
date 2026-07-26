@@ -93,7 +93,7 @@ int read_line(char *buf, int max)
     char c;
     while (i < max - 1)
     {
-        if (read(0, &c, 1))
+        if (read(0, &c, 1) == 1)
         {
             if (c == '\n' || c == '\r')
             {
@@ -238,6 +238,10 @@ int run_stage(stage_t *st, int pipe_in, int pipe_out, int extra_fd)
             }
         }
 
+        /* Reset signal dispositions before running anything — builtins and exec alike */
+        signal(SIGINT, SIG_DFL);
+        signal(SIGTSTP, SIG_DFL);
+
         if (is_builtin(st)) {
             run_command(st->argc, st->args);
             exit(0);
@@ -252,8 +256,6 @@ int run_stage(stage_t *st, int pipe_in, int pipe_out, int extra_fd)
         }
         cmdline[pos] = '\0';
 
-        signal(SIGINT, SIG_DFL);
-        signal(SIGTSTP, SIG_DFL);
         exit(exec(cmdline));
     }
     return pid;
@@ -423,10 +425,11 @@ int main(void)
                 } else {
                     int pid = run_stage(st, -1, -1, -1);
                     if (pid > 0) {
-                        if (st->background) {
-                            add_job(pid, pid, st->args[0]);
-                            setpgid(pid, pid);
-                            printf("[%d] %d\n", num_jobs, pid);
+                    if (st->background) {
+                        add_job(pid, pid, st->args[0]);
+                        setpgid(pid, pid);
+                        setpgid(0, 0);
+                        printf("[%d] %d\n", job_id_of(num_jobs - 1), pid);
                         } else {
                             add_job(pid, pid, st->args[0]);
                             setpgid(pid, pid);
@@ -452,6 +455,8 @@ int main(void)
                 int prev_fd = -1;
                 int child_count = 0;
                 int last_pid = -1;
+                int pipeline_pgid = 0;
+                int pipeline_pids[MAX_STAGES];
                 int background = stages[num_stages - 1].background;
 
                 for (int i = 0; i < num_stages; i++) {
@@ -461,7 +466,15 @@ int main(void)
                     int extra_fd = -1;
 
                     if (i < num_stages - 1) {
-                        pipe(pipe_fds);
+                        if (pipe(pipe_fds) != 0) {
+                            printf("pipe failed\n");
+                            /* Kill any children already spawned */
+                            for (int k = 0; k < child_count; k++)
+                                kill(pipeline_pids[k], SIGKILL);
+                            for (int k = 0; k < child_count; k++)
+                                wait();
+                            break;
+                        }
                         next_fd = pipe_fds[1];
                         extra_fd = pipe_fds[0];
                     }
@@ -475,31 +488,39 @@ int main(void)
                     }
 
                     if (pid > 0) {
+                        pipeline_pids[child_count] = pid;
                         child_count++;
                         last_pid = pid;
-                        if (child_count == 1)
+                        if (child_count == 1) {
+                            pipeline_pgid = pid;
                             setpgid(pid, pid);
+                        } else {
+                            setpgid(pid, pipeline_pgid);
+                        }
                     }
                 }
 
-                if (background) {
-                    add_job(last_pid, last_pid, stages[0].args[0]);
-                } else {
-                    add_job(last_pid, last_pid, stages[0].args[0]);
-                    for (int i = 0; i < child_count; i++)
-                        wait();
-                    if (kill(last_pid, 0) == 0) {
-                        int idx = find_job_by_pid(last_pid);
-                        if (idx >= 0) {
-                            jobs[idx].status = JOB_STOPPED;
-                            printf("\n[%d]+ Stopped  %s\n", job_id_of(idx), jobs[idx].name);
-                        }
+                if (child_count > 0 && last_pid > 0) {
+                    if (background) {
+                        add_job(last_pid, pipeline_pgid, stages[0].args[0]);
+                        setpgid(0, 0);
                     } else {
-                        int idx = find_job_by_pid(last_pid);
-                        if (idx >= 0)
-                            jobs[idx].status = JOB_DONE;
+                        add_job(last_pid, pipeline_pgid, stages[0].args[0]);
+                        for (int i = 0; i < child_count; i++)
+                            wait();
+                        if (kill(last_pid, 0) == 0) {
+                            int idx = find_job_by_pid(last_pid);
+                            if (idx >= 0) {
+                                jobs[idx].status = JOB_STOPPED;
+                                printf("\n[%d]+ Stopped  %s\n", job_id_of(idx), jobs[idx].name);
+                            }
+                        } else {
+                            int idx = find_job_by_pid(last_pid);
+                            if (idx >= 0)
+                                jobs[idx].status = JOB_DONE;
+                        }
+                        setpgid(0, 0);
                     }
-                    setpgid(0, 0);
                 }
             }
 

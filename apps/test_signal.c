@@ -60,8 +60,8 @@ int main(void)
     print("\n");
 
     /* --- Test 1: SIGSTOP --- */
-    print("\n[Test 1] Sending SIGSTOP (17)...\n");
-    kill(child_pid, 17);  /* SIGSTOP */
+    print("\n[Test 1] Sending SIGSTOP...\n");
+    kill(child_pid, SIGSTOP);
     yield_now();
     yield_now();
 
@@ -80,8 +80,8 @@ int main(void)
     }
 
     /* --- Test 2: SIGCONT --- */
-    print("\n[Test 2] Sending SIGCONT (18)...\n");
-    kill(child_pid, 18);  /* SIGCONT */
+    print("\n[Test 2] Sending SIGCONT...\n");
+    kill(child_pid, SIGCONT);
     yield_now();
     yield_now();
 
@@ -99,8 +99,8 @@ int main(void)
     }
 
     /* --- Test 3: SIGKILL --- */
-    print("\n[Test 3] Sending SIGKILL (9)...\n");
-    kill(child_pid, 9);  /* SIGKILL */
+    print("\n[Test 3] Sending SIGKILL...\n");
+    kill(child_pid, SIGKILL);
     yield_now();
     yield_now();
 

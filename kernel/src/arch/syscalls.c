@@ -101,12 +101,6 @@ void resolve_path(const char *user_path, char *buf, int buf_size)
     buf[ci] = '\0';
 }
 
-int32_t syscall_sigreturn(struct regs *regs);
-int32_t syscall_signal(struct regs *regs);
-int32_t syscall_setpgid(struct regs *regs);
-int32_t syscall_waitpid(struct regs *regs);
-int32_t syscall_sigprocmask(struct regs *regs);
-
 int32_t (*syscalls[MAX_SYSCALLS])(struct regs *) = {
     syscall_test0,
     syscall_test1,
@@ -407,8 +401,10 @@ int32_t syscall_wait(struct regs *regs)
 
     /* No terminated child — if we have live children, block */
     if (has_live_children(my_pid)) {
+        current_process->waiting_on_pid = 0; /* 0 = wait for any child */
         current_process->state = PROCESS_STATE_BLOCKED;
         schedule(regs);
+        current_process->waiting_on_pid = 0;
         /* schedule() never returns — unblock_parent() writes the
          * child PID directly into our saved trap frame EAX slot */
     }
@@ -511,6 +507,16 @@ int32_t syscall_exec(struct regs *regs)
             proc->files_open[i] = 0;
         }
     }
+
+    /* Reset caught signal dispositions to SIG_DFL across exec.
+     * SIG_IGN is preserved per POSIX.  Clear handler frame state. */
+    for (int i = 1; i < NSIG; i++) {
+        if (proc->sig.disposition[i] != SIG_IGN)
+            proc->sig.disposition[i] = SIG_DFL;
+    }
+    proc->sig.in_handler = 0;
+    proc->sig.mask = 0;
+    proc->sig.pending = 0;
 
     /* Set up new page directory + load ELF + argv — shared helper */
     if (load_program(proc, path, argc, argv) != 0) {
@@ -1235,14 +1241,17 @@ int32_t syscall_munmap(struct regs *regs)
 */
 int32_t syscall_sigreturn(struct regs *regs)
 {
-    (void)regs;
     if (!current_process || !current_process->sig.in_handler)
         return -1;
+
+    /* Save the interrupted EAX before overwriting — it's the return value
+     * the user's code had when the signal interrupted it. */
+    uint32_t saved_eax = current_process->sig.frame.eax;
 
     /* Restore original user context from saved signal frame */
     regs->eip     = current_process->sig.frame.eip;
     regs->useresp = current_process->sig.frame.useresp;
-    regs->eax     = current_process->sig.frame.eax;
+    regs->eax     = saved_eax;
     regs->ebx     = current_process->sig.frame.ebx;
     regs->ecx     = current_process->sig.frame.ecx;
     regs->edx     = current_process->sig.frame.edx;
@@ -1255,7 +1264,7 @@ int32_t syscall_sigreturn(struct regs *regs)
     /* Restore signal mask saved before handler execution */
     current_process->sig.mask = current_process->sig.saved_mask;
 
-    return 0;
+    return saved_eax;
 }
 
 /*
@@ -1275,6 +1284,10 @@ int32_t syscall_signal(struct regs *regs)
         return -1;
     /* SIGKILL and SIGSTOP cannot be caught */
     if (signum == SIGKILL || signum == SIGSTOP)
+        return -1;
+
+    /* Allow SIG_DFL (0) and SIG_IGN (1), reject other non-user addresses */
+    if (handler != SIG_DFL && handler != SIG_IGN && !is_user_ptr((void *)handler))
         return -1;
 
     current_process->sig.disposition[signum] = handler;
@@ -1354,11 +1367,30 @@ int32_t syscall_waitpid(struct regs *regs)
         return 0;
     }
 
-    /* Blocking: wait for any child */
-    if (has_live_children(my_pid)) {
+    /* Blocking: wait for a child (loop until the right one arrives) */
+    current_process->waiting_on_pid = req_pid;
+    while (has_live_children(my_pid)) {
+        /* Re-check for the specific child we're waiting for */
+        uint32_t d = find_terminated_child(my_pid);
+        if (d != 0 && (req_pid == 0 || req_pid == d)) {
+            current_process->waiting_on_pid = 0;
+            remove_child_from_parent(current_process, d);
+            pcb_t *c = get_process_by_pid(d);
+            if (c)
+                process_cleanup_child(c);
+            regs->eax = d;
+            return d;
+        }
+        uint32_t s = find_stopped_child(my_pid);
+        if (s != 0 && (req_pid == 0 || req_pid == s)) {
+            current_process->waiting_on_pid = 0;
+            regs->eax = -(int32_t)s;
+            return -(int32_t)s;
+        }
         current_process->state = PROCESS_STATE_BLOCKED;
         schedule(regs);
     }
+    current_process->waiting_on_pid = 0;
 
     return -1;
 }

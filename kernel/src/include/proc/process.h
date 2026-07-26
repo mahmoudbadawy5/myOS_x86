@@ -87,6 +87,7 @@ typedef struct pcb {
     uint32_t parent_id;
 
     signal_state_t sig;                 /* All signal-related state */
+    uint32_t waiting_on_pid;            /* Nonzero if blocked in wait/waitpid for this child (0=any) */
 
     uint32_t pgid;                      /* Process group ID */
     uint32_t num_children;              /* Number of live children */

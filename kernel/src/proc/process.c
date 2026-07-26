@@ -69,6 +69,8 @@ static void init_process_signals(pcb_t *pcb, pcb_t *parent)
     pcb->sig.pending = 0;
     pcb->sig.stopped_by = 0;
     pcb->sig.saved_mask = 0;
+    pcb->sig.in_handler = 0;
+    pcb->waiting_on_pid = 0;
     if (parent) {
         pcb->pgid = parent->pgid;
         pcb->sig.mask = parent->sig.mask;
@@ -331,7 +333,8 @@ void schedule(struct regs *r)
     /* Check for pending signals on the current process */
     if (cur_proccess_id != -1) {
         pcb_t *cur = &process_table[cur_proccess_id];
-        if (cur->sig.pending != 0 && cur->state == PROCESS_STATE_RUNNING) {
+        if (cur->sig.pending != 0 && cur->state == PROCESS_STATE_RUNNING
+            && !cur->sig.in_handler) {
             uint32_t pending = cur->sig.pending;
 
             /* SIGKILL is unblockable — always kills */
@@ -428,6 +431,14 @@ void schedule(struct regs *r)
                         /* Push signal frame onto user stack */
                         uint32_t new_esp = r->useresp;
                         new_esp -= 4;
+                        /* Validate the stack range is in user space and mapped */
+                        if (new_esp < USER_CODE_BASE || new_esp + 8 > USER_STACK_TOP) {
+                            /* Invalid stack — kill the process */
+                            cur->sig.mask = cur->sig.saved_mask;
+                            cur->state = PROCESS_STATE_TERMINATED;
+                            unblock_parent(cur->pid, 1);
+                            break;
+                        }
                         *((uint32_t *)new_esp) = sig;                              /* arg: signum */
                         new_esp -= 4;
                         *((uint32_t *)new_esp) = SIGNAL_TRAMPOLINE_VADDR;         /* return addr → sigreturn */
@@ -631,7 +642,6 @@ pcb_t *fork_process(pcb_t *parent, struct regs *regs)
     child->cwd[ci] = '\0';
 
     if (!alloc_kernel_stack(child)) {
-        parent->num_children--;
         child->state = PROCESS_STATE_TERMINATED;
         return NULL;
     }
@@ -755,7 +765,8 @@ void unblock_parent(uint32_t child_pid, int cleanup)
     if (!child) return;
 
     pcb_t *parent = get_process_by_pid(child->parent_id);
-    if (parent && parent->state == PROCESS_STATE_BLOCKED) {
+    if (parent && parent->state == PROCESS_STATE_BLOCKED &&
+        (parent->waiting_on_pid == 0 || parent->waiting_on_pid == child_pid)) {
         if (cleanup) {
             /* Terminated: remove from children list and clean up */
             remove_child_from_parent(parent, child_pid);

@@ -88,7 +88,8 @@ int main(void)
     if (fd >= 0) {
         int n = read(fd, buf, 31);
         close(fd);
-        buf[n] = '\0';
+        if (n >= 0)
+            buf[n] = '\0';
     }
 
     if (fd >= 0 && buf[0] == 'S' && buf[1] == 'I') {
