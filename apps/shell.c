@@ -194,6 +194,9 @@ int run_stage(stage_t *st, int pipe_in, int pipe_out, int extra_fd)
         }
         cmdline[pos] = '\0';
 
+        /* Restore default signal handling so child responds to Ctrl+C/Z */
+        signal(SIGINT, SIG_DFL);
+        signal(SIGTSTP, SIG_DFL);
         exit(exec(cmdline));
     }
     return pid;
@@ -242,6 +245,8 @@ void run_command(int argc, char **args)
                 while (args[i][j]) cmdline[pos++] = args[i][j++];
             }
             cmdline[pos] = '\0';
+            signal(SIGINT, SIG_DFL);
+            signal(SIGTSTP, SIG_DFL);
             exit(exec(cmdline));
         }
         if (pid > 0) {
@@ -256,6 +261,10 @@ int main(void)
 {
     static char line[LINE_MAX];
     static stage_t stages[MAX_STAGES];
+
+    /* Ignore SIGINT and SIGTSTP — only foreground children should respond */
+    signal(SIGINT, SIG_IGN);
+    signal(SIGTSTP, SIG_IGN);
 
     print("\x1b\x0F\x0C");
     print("myOS Shell v0.2\n");

@@ -14,6 +14,17 @@ int kill(int pid, int signal);
 void yield(void);
 
 /* Signals */
+#define NSIG       32
+#define SIG_DFL    ((sighandler_t)0)
+#define SIG_IGN    ((sighandler_t)1)
+#define SIGINT     2
+#define SIGKILL    9
+#define SIGSTOP    17
+#define SIGCONT    18
+#define SIGCHLD    19
+#define SIGTSTP    20
+#define SIG_BIT(s) (1U << (s))
+
 typedef void (*sighandler_t)(int signum);
 sighandler_t signal(int signum, sighandler_t handler);
 int sigreturn(void);
