@@ -54,6 +54,16 @@ int dup(int fd)
     return sys_dup(fd);
 }
 
+int dup2(int oldfd, int newfd)
+{
+    return sys_dup2(oldfd, newfd);
+}
+
+int fork(void)
+{
+    return sys_fork();
+}
+
 int pipe(int fds[2])
 {
     return sys_pipe(fds);

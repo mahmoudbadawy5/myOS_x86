@@ -1,20 +1,22 @@
 #include <test.h>
 #include <syscalls.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 int main(int argc, char **argv)
 {
-    if (argc < 2) {
-        print("cat: missing file operand\n");
-        return 1;
-    }
+    int fd;
 
-    int fd = sys_open(argv[1], "r");
-    if (fd < 0) {
-        print("cat: ");
-        print(argv[1]);
-        print(": no such file\n");
-        return 1;
+    if (argc < 2) {
+        fd = 0;
+    } else {
+        fd = sys_open(argv[1], "r");
+        if (fd < 0) {
+            print("cat: ");
+            print(argv[1]);
+            print(": no such file\n");
+            return 1;
+        }
     }
 
     char buf[512];
@@ -23,6 +25,7 @@ int main(int argc, char **argv)
         sys_write(buf, n);
     }
 
-    sys_close(fd);
+    if (fd != 0)
+        sys_close(fd);
     return 0;
 }

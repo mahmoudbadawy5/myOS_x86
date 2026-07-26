@@ -3,7 +3,7 @@
 #include <types.h>
 #include <isr.h>
 
-#define MAX_SYSCALLS 27
+#define MAX_SYSCALLS 28
 
 void init_syscalls(void);
 int32_t syscall_test0(struct regs *regs);
@@ -33,6 +33,7 @@ int32_t syscall_ps(struct regs *regs);
 int32_t syscall_fork(struct regs *regs);
 int32_t syscall_mmap(struct regs *regs);
 int32_t syscall_munmap(struct regs *regs);
+int32_t syscall_dup2(struct regs *regs);
 
 // Defined in syscalls_asm.asm
 

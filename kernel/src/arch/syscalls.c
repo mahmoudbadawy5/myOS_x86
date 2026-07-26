@@ -129,6 +129,7 @@ int32_t (*syscalls[MAX_SYSCALLS])(struct regs *) = {
     syscall_fork,
     syscall_mmap,
     syscall_munmap,
+    syscall_dup2,
 };
 
 void init_syscalls(void)
@@ -247,6 +248,24 @@ int32_t syscall_exit(struct regs *regs)
 {
     (void)regs;
     if (current_process) {
+        /* Close all open file descriptors so pipe endpoints are released.
+         * Without this, pipe writers/readers stay open and the other end
+         * busy-waits forever (e.g. cat hello.txt | wc hangs). */
+        for (int i = 0; i < MAX_FILES; i++) {
+            if (current_process->files_open[i]) {
+                FILE *fp = current_process->files_open[i];
+                fs_node_t *node = fp->file;
+                if (node && node->refcount > 0)
+                    node->refcount--;
+                if (node && node->refcount == 0) {
+                    close_fs(node);
+                    free(node);
+                }
+                free(fp);
+                current_process->files_open[i] = 0;
+            }
+        }
+
         /* Kill all live children so they don't become orphans */
         kill_children_of(current_process->pid);
 
@@ -441,11 +460,11 @@ int32_t syscall_exec(struct regs *regs)
 
     pcb_t *proc = current_process;
 
-    /* Free old address space */
-    uint32_t *saved_dir = vmm_get_directory();
+    /* Free old address space — switch to kernel dir so we can safely
+     * free the child's page tables, then stay on kernel dir.
+     * load_program() will clone from kernel dir to build the new one. */
     switch_to_kernel_page_dir();
     vmm_free_directory((uint32_t *)proc->regs.cr3);
-    set_page_dir(saved_dir);
 
     /* Free old VMA regions */
     vma_t *vma = proc->memory_regions;
@@ -456,10 +475,20 @@ int32_t syscall_exec(struct regs *regs)
     }
     proc->memory_regions = 0;
 
-    /* Free old files (keep stdin/stdout) */
+    /* Free old files (keep stdin/stdout) — use proper close logic
+     * to decrement node refcount, invoke close_fs (pipe endpoint
+     * cleanup), and free the node when refcount hits 0. */
     for (int i = 2; i < MAX_FILES; i++) {
         if (proc->files_open[i]) {
-            free(proc->files_open[i]);
+            FILE *fp = proc->files_open[i];
+            fs_node_t *node = fp->file;
+            if (node && node->refcount > 0)
+                node->refcount--;
+            if (node && node->refcount == 0) {
+                close_fs(node);
+                free(node);
+            }
+            free(fp);
             proc->files_open[i] = 0;
         }
     }
@@ -470,6 +499,33 @@ int32_t syscall_exec(struct regs *regs)
         proc->state = PROCESS_STATE_TERMINATED;
         return -1;
     }
+
+    /* load_elf() sets state = PROCESS_STATE_NEW (correct for
+     * create_process/spawn which use the first-run path).  But exec
+     * replaces the process image in-place via trap-frame overwrite +
+     * iret — it does NOT go through switch_to_process's first-run
+     * path.  If we leave state as NEW, the next timer-interrupt ->
+     * schedule -> switch_to_process will see NEW, take .first_run,
+     * reload the IRET frame from kernel_stack_top, and re-enter the
+     * program from its entry point — causing the double-exec bug.
+     * Restore state to RUNNING so the scheduler treats this as a
+     * normal context switch. */
+    proc->state = PROCESS_STATE_RUNNING;
+
+    /* Overwrite the CPU-pushed IRET frame in the trap frame so that
+     * the handler's iretd jumps to the new program, not back to the
+     * old exec wrapper code (which is unmapped in the new page dir). */
+    uint32_t *iret = (uint32_t *)((uint32_t *)regs + 14); /* eip at offset 56 */
+    iret[0] = proc->regs.eip;  /* EIP = new entry point */
+    iret[1] = 0x1B;             /* CS  = user code */
+    iret[2] = 0x202;            /* EFLAGS */
+    iret[3] = proc->regs.esp;  /* ESP = new user stack */
+    iret[4] = 0x23;             /* SS  = user data */
+
+    /* Switch to the new process page directory before iretd so the
+     * user-mode code can access its pages.  The new dir includes
+     * kernel mappings (cloned from kernel dir) so we stay safe. */
+    set_page_dir((uint32_t *)proc->regs.cr3);
 
     return 0;
 }
@@ -491,11 +547,59 @@ int32_t syscall_dup(struct regs *regs)
     /* Find first free slot */
     for (uint32_t i = 0; i < MAX_FILES; i++) {
         if (!current_process->files_open[i]) {
-            current_process->files_open[i] = fp;
+            FILE *new_fp = malloc(sizeof(FILE));
+            if (!new_fp)
+                return -1;
+            new_fp->flags = fp->flags;
+            new_fp->file = fp->file;
+            if (new_fp->file)
+                new_fp->file->refcount++;
+            current_process->files_open[i] = new_fp;
             return i;
         }
     }
     return -1; /* no free slots */
+}
+
+/*
+    dup2 — duplicate a file descriptor to a specific fd number.
+    ebx: old fd
+    ecx: new fd
+    Returns: new fd, or -1 on error.
+*/
+int32_t syscall_dup2(struct regs *regs)
+{
+    uint32_t old_fd = regs->ebx;
+    uint32_t new_fd = regs->ecx;
+
+    if (old_fd >= MAX_FILES || new_fd >= MAX_FILES)
+        return -1;
+    if (old_fd == new_fd)
+        return new_fd;
+
+    FILE *fp = current_process->files_open[old_fd];
+    if (!fp)
+        return -1;
+
+    /* Allocate new FILE before closing old one — if alloc fails,
+     * return -1 without touching new_fd (preserving the original). */
+    FILE *new_fp = malloc(sizeof(FILE));
+    if (!new_fp)
+        return -1;
+
+    /* Close new_fd if already open */
+    if (current_process->files_open[new_fd]) {
+        struct regs close_regs;
+        close_regs.ebx = new_fd;
+        syscall_close(&close_regs);
+    }
+
+    new_fp->flags = fp->flags;
+    new_fp->file = fp->file;
+    if (new_fp->file)
+        new_fp->file->refcount++;
+    current_process->files_open[new_fd] = new_fp;
+    return new_fd;
 }
 
 /*

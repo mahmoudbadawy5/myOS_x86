@@ -7,6 +7,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <fs/vfs.h>
+#include <fs/pipe.h>
 #include <fs/initrd.h>
 #include <arch.h>
 #include <isr.h>
@@ -153,6 +154,7 @@ int load_program(pcb_t *proc, const char *path, int argc, const char **argv)
         proc->regs.esp = esp;
         uint32_t *frame = (uint32_t *)proc->kernel_stack_top;
         frame[3] = esp;
+        __asm__ __volatile__("sfence" ::: "memory");
     }
 
     set_page_dir((uint32_t *)old_cr3);
@@ -484,6 +486,10 @@ pcb_t *fork_process(pcb_t *parent, struct regs *regs)
     tf->eflags  = regs->eflags;
     tf->useresp = regs->useresp;/* parent's user stack pointer */
     tf->ss      = regs->ss;     /* 0x23 user data */
+
+    /* CPU fence: ensure trap frame stores are committed before the
+     * scheduler reads them via switch_to_process asm. */
+    __asm__ __volatile__("sfence" ::: "memory");
 
     /* Copy remaining register state (cr3 set separately below) */
     child->regs = parent->regs;

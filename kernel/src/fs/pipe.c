@@ -6,9 +6,12 @@ static void pipe_close_fn(fs_node_t *node)
 {
     pipe_buf_t *pb = (pipe_buf_t *)node->ptr;
     if (pb) {
-        /* Both endpoints share the same pipe_buf_t.
-         * Decrement the shared refcount; free the buffer only
-         * when the last endpoint closes. */
+        /* node->impl: 1 = reader endpoint, 0 = writer endpoint */
+        if (node->impl)
+            pb->readers--;
+        else
+            pb->writers--;
+
         if (pb->refcount > 0)
             pb->refcount--;
         if (pb->refcount == 0) {
@@ -24,10 +27,16 @@ static uint32_t pipe_read_fn(fs_node_t *node, uint32_t size, uint32_t units, uin
     uint32_t total = size * units;
     uint32_t read = 0;
 
-    while (read < total && pb->count > 0) {
-        buffer[read++] = pb->buf[pb->read_pos];
-        pb->read_pos = (pb->read_pos + 1) % PIPE_BUF_SIZE;
-        pb->count--;
+    while (read < total) {
+        if (pb->count > 0) {
+            buffer[read++] = pb->buf[pb->read_pos];
+            pb->read_pos = (pb->read_pos + 1) % PIPE_BUF_SIZE;
+            pb->count--;
+        } else if (pb->writers > 0) {
+            __asm__ __volatile__("sti; hlt");
+        } else {
+            break; /* EOF: no writers, no data */
+        }
     }
     return read;
 }
@@ -38,10 +47,16 @@ static uint32_t pipe_write_fn(fs_node_t *node, uint32_t size, uint32_t units, ui
     uint32_t total = size * units;
     uint32_t written = 0;
 
-    while (written < total && pb->count < PIPE_BUF_SIZE) {
-        pb->buf[pb->write_pos] = buffer[written++];
-        pb->write_pos = (pb->write_pos + 1) % PIPE_BUF_SIZE;
-        pb->count++;
+    while (written < total) {
+        if (pb->count < PIPE_BUF_SIZE) {
+            pb->buf[pb->write_pos] = buffer[written++];
+            pb->write_pos = (pb->write_pos + 1) % PIPE_BUF_SIZE;
+            pb->count++;
+        } else if (pb->readers > 0) {
+            __asm__ __volatile__("sti; hlt");
+        } else {
+            break; /* Broken pipe: no readers */
+        }
     }
     return written;
 }
@@ -54,6 +69,8 @@ int pipe_create(FILE **read_fp, FILE **write_fp)
     pb->write_pos = 0;
     pb->count = 0;
     pb->refcount = 2; /* one for each endpoint */
+    pb->readers = 1;
+    pb->writers = 1;
 
     fs_node_t *read_node = malloc(sizeof(fs_node_t));
     if (!read_node) { free(pb); return -1; }
@@ -63,6 +80,7 @@ int pipe_create(FILE **read_fp, FILE **write_fp)
     read_node->read = pipe_read_fn;
     read_node->close = pipe_close_fn;
     read_node->refcount = 1;
+    read_node->impl = 1; /* reader endpoint */
 
     fs_node_t *write_node = malloc(sizeof(fs_node_t));
     if (!write_node) { free(read_node); free(pb); return -1; }
@@ -72,6 +90,7 @@ int pipe_create(FILE **read_fp, FILE **write_fp)
     write_node->write = pipe_write_fn;
     write_node->close = pipe_close_fn;
     write_node->refcount = 1;
+    write_node->impl = 0; /* writer endpoint */
 
     *read_fp = malloc(sizeof(FILE));
     if (!*read_fp) { free(write_node); free(read_node); free(pb); return -1; }

@@ -6,45 +6,53 @@
 
 int main(int argc, char **argv)
 {
-    if (argc < 3) {
-        print("grep: usage: grep PATTERN FILE\n");
+    if (argc < 2) {
+        print("grep: usage: grep PATTERN [FILE]\n");
         return 1;
     }
 
     const char *pattern = argv[1];
-    const char *filename = argv[2];
-
-    FILE *fp = fopen(filename, "r");
-    if (!fp) {
-        print("grep: ");
-        print(filename);
-        print(": no such file\n");
-        return 1;
-    }
-
-    fseek(fp, 0, SEEK_END);
-    int fsize = ftell(fp);
-    fseek(fp, 0, SEEK_SET);
-
-    if (fsize <= 0) {
-        fclose(fp);
-        return 1;
-    }
-
-    char *data = malloc(fsize);
-    if (!data) {
-        print("grep: out of memory\n");
-        fclose(fp);
-        return 1;
-    }
-
+    char *data = 0;
     int total = 0;
-    while (total < fsize) {
-        int n = fread(data + total, 1, fsize - total, fp);
-        if (n <= 0) break;
-        total += n;
+    int capacity = 0;
+
+    if (argc >= 3) {
+        FILE *fp = fopen(argv[2], "r");
+        if (!fp) {
+            print("grep: ");
+            print(argv[2]);
+            print(": no such file\n");
+            return 1;
+        }
+        fseek(fp, 0, SEEK_END);
+        int fsize = ftell(fp);
+        fseek(fp, 0, SEEK_SET);
+        if (fsize <= 0) { fclose(fp); return 1; }
+        data = malloc(fsize);
+        if (!data) { print("grep: out of memory\n"); fclose(fp); return 1; }
+        while (total < fsize) {
+            int n = fread(data + total, 1, fsize - total, fp);
+            if (n <= 0) break;
+            total += n;
+        }
+        fclose(fp);
+    } else {
+        capacity = 512;
+        data = malloc(capacity);
+        if (!data) { print("grep: out of memory\n"); return 1; }
+        char buf[512];
+        int n;
+        while ((n = sys_read_fd(0, buf, sizeof(buf))) > 0) {
+            while (total + n > capacity) {
+                capacity *= 2;
+                char *tmp = realloc(data, capacity);
+                if (!tmp) { free(data); print("grep: out of memory\n"); return 1; }
+                data = tmp;
+            }
+            memcpy(data + total, buf, n);
+            total += n;
+        }
     }
-    fclose(fp);
 
     int found = 0;
     int plen = strlen(pattern);
