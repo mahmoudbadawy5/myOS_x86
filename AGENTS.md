@@ -38,10 +38,21 @@ Bare-metal educational OS for i686, cross-compiled with i686-elf-gcc.
 - `syscall_signal` (#29) registers user handlers in `signal_disposition[]`
 - Handler calling convention: signum in EBX, return to trampoline → sigreturn
 
+### Job Control (Phase 4 — complete)
+- `setpgid` syscall (#30): sets process pgid + foreground_pgid
+- Keyboard handler sends SIGINT/SIGTSTP to foreground process group
+- Shell calls `setpgid(pid, pid)` before `wait()`, `setpgid(0, 0)` after
+- `unblock_parent` with cleanup flag: stopped children wake parent without freeing resources
+
+### Remaining Signal Phases
+- **Phase 5 — Shell signal handling**: Shell ignores SIGINT while child runs (so Ctrl+C only kills child). Shell prints "[N]+ Stopped" on SIGTSTP. Shell uses `signal(SIGINT, SIG_IGN)` and `signal(SIGTSTP, SIG_IGN)` during foreground commands.
+- **Phase 6 — Background jobs**: `cmd &` syntax in shell, `jobs`/`fg`/`bg` builtins, background process tracking, job IDs, SIGCONT for fg/bg
+- **Phase 7 — Signal masks**: `sigprocmask` syscall, block/unblock signals, auto-block signal during handler execution (prevent re-entrant delivery)
+
 ### Process Model
 - `struct regs` (ISR trap frame) vs `registers_t` (PCB storage) — different layouts
 - `switch_to_process` saves trap frame pointer in `PCB_OFFSET_REGS_ESP`, restores via direct stack restore (not memcpy)
 - PCB fields: `process.h`, functions: `process.c`
 
 ### Branch
-- `feat-signals`: Phase 1+2+3 signal work in progress
+- `feat-signals`: Phase 1+2+3+4 signal work in progress
