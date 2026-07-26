@@ -34,5 +34,6 @@ void sys_yield(void);
 int sys_sigreturn(void);
 int sys_signal(int signum, void *handler);
 int sys_setpgid(int pid, int pgid);
+int sys_waitpid(int pid, int options);
 
 #endif

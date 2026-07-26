@@ -104,6 +104,7 @@ void resolve_path(const char *user_path, char *buf, int buf_size)
 int32_t syscall_sigreturn(struct regs *regs);
 int32_t syscall_signal(struct regs *regs);
 int32_t syscall_setpgid(struct regs *regs);
+int32_t syscall_waitpid(struct regs *regs);
 
 int32_t (*syscalls[MAX_SYSCALLS])(struct regs *) = {
     syscall_test0,
@@ -137,6 +138,7 @@ int32_t (*syscalls[MAX_SYSCALLS])(struct regs *) = {
     syscall_sigreturn,  /* #28 */
     syscall_signal,     /* #29 */
     syscall_setpgid,    /* #30 */
+    syscall_waitpid,    /* #31 */
 };
 
 void init_syscalls(void)
@@ -467,6 +469,14 @@ int32_t syscall_exec(struct regs *regs)
 
     pcb_t *proc = current_process;
 
+    /* Update proc_name from the path */
+    int name_len = 0;
+    while (path[name_len] && name_len < 19) {
+        proc->proc_name[name_len] = path[name_len];
+        name_len++;
+    }
+    proc->proc_name[name_len] = '\0';
+
     /* Free old address space — switch to kernel dir so we can safely
      * free the child's page tables, then stay on kernel dir.
      * load_program() will clone from kernel dir to build the new one. */
@@ -679,7 +689,7 @@ int32_t syscall_kill(struct regs *regs)
     uint32_t target_pid = regs->ebx;
     uint32_t signal = regs->ecx;
 
-    if (target_pid == 0 || signal == 0 || signal >= NSIG)
+    if (target_pid == 0 || signal >= NSIG)
         return -1;
 
     pcb_t *target = get_process_by_pid(target_pid);
@@ -688,6 +698,10 @@ int32_t syscall_kill(struct regs *regs)
 
     if (target->state == PROCESS_STATE_TERMINATED)
         return -1;
+
+    /* signal 0: existence check only, don't send anything */
+    if (signal == 0)
+        return 0;
 
     /* Set the signal bit (bitwise OR — don't overwrite pending signals) */
     target->signal_pending |= SIG_BIT(signal);
@@ -1291,4 +1305,50 @@ int32_t syscall_setpgid(struct regs *regs)
     proc->pgid = pgid;
     foreground_pgid = pgid;
     return 0;
+}
+
+/*
+    waitpid — wait for a specific child, with optional WNOHANG.
+    ebx: pid (0 = any child)
+    ecx: options (bit 0 = WNOHANG: return immediately if no child exited)
+    Returns: child PID, 0 if WNOHANG and no child ready, -1 on error.
+*/
+int32_t syscall_waitpid(struct regs *regs)
+{
+    if (!current_process)
+        return -1;
+
+    uint32_t req_pid = regs->ebx;
+    uint32_t options = regs->ecx;
+    uint32_t my_pid = current_process->pid;
+
+    /* Try to find a terminated child */
+    uint32_t dead = find_terminated_child(my_pid);
+    if (dead != 0 && (req_pid == 0 || req_pid == dead)) {
+        remove_child_from_parent(current_process, dead);
+        pcb_t *child = get_process_by_pid(dead);
+        if (child)
+            process_cleanup_child(child);
+        regs->eax = dead;
+        return dead;
+    }
+
+    /* WNOHANG: don't block — also check for stopped children */
+    if (options & 1) {
+        uint32_t stopped = find_stopped_child(my_pid);
+        if (stopped != 0 && (req_pid == 0 || req_pid == stopped)) {
+            regs->eax = -(int32_t)stopped;
+            return -(int32_t)stopped;
+        }
+        regs->eax = 0;
+        return 0;
+    }
+
+    /* Blocking: wait for any child */
+    if (has_live_children(my_pid)) {
+        current_process->state = PROCESS_STATE_BLOCKED;
+        schedule(regs);
+    }
+
+    return -1;
 }

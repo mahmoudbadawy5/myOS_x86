@@ -227,3 +227,10 @@ int sys_setpgid(int pid, int pgid)
     __asm__ __volatile__("int $0x80" : "=a"(ret) : "a"(30), "b"(pid), "c"(pgid) : "memory", "cc");
     return ret;
 }
+
+int sys_waitpid(int pid, int options)
+{
+    int ret;
+    __asm__ __volatile__("int $0x80" : "=a"(ret) : "a"(31), "b"(pid), "c"(options) : "memory", "cc");
+    return ret;
+}

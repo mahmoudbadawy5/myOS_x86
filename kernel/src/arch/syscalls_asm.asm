@@ -1,4 +1,4 @@
-MAX_SYSCALL EQU 30
+MAX_SYSCALL EQU 31
 
 global handle_syscalls
 extern syscalls

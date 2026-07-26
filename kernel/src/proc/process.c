@@ -506,14 +506,30 @@ uint32_t find_terminated_child(uint32_t parent_pid)
     return 0;
 }
 
-/* Returns 1 if `parent_pid` has live (non-terminated) children */
+/* Returns PID of a stopped child of `parent_pid`, or 0 if none */
+uint32_t find_stopped_child(uint32_t parent_pid)
+{
+    pcb_t *parent = get_process_by_pid(parent_pid);
+    if (!parent) return 0;
+    for (uint32_t i = 0; i < parent->num_children; i++) {
+        pcb_t *child = get_process_by_pid(parent->children_id[i]);
+        if (child && child->state == PROCESS_STATE_STOPPED)
+            return child->pid;
+    }
+    return 0;
+}
+
+/* Returns 1 if `parent_pid` has non-terminated, non-stopped children.
+ * Stopped children don't count — wait() without WUNTRACED won't return
+ * for them, so blocking on them would hang forever. */
 int has_live_children(uint32_t parent_pid)
 {
     pcb_t *parent = get_process_by_pid(parent_pid);
     if (!parent) return 0;
     for (uint32_t i = 0; i < parent->num_children; i++) {
         pcb_t *child = get_process_by_pid(parent->children_id[i]);
-        if (child && child->state != PROCESS_STATE_TERMINATED)
+        if (child && child->state != PROCESS_STATE_TERMINATED &&
+            child->state != PROCESS_STATE_STOPPED)
             return 1;
     }
     return 0;
@@ -735,13 +751,14 @@ void unblock_parent(uint32_t child_pid, int cleanup)
 
     pcb_t *parent = get_process_by_pid(child->parent_id);
     if (parent && parent->state == PROCESS_STATE_BLOCKED) {
-        /* Always remove from parent's children list so wait() doesn't
-         * re-block on this child */
-        remove_child_from_parent(parent, child_pid);
+        if (cleanup) {
+            /* Terminated: remove from children list and clean up */
+            remove_child_from_parent(parent, child_pid);
+        }
+        /* Stopped: keep in children list so waitpid/fg/bg can find it */
         uint32_t *tf = (uint32_t *)parent->regs.esp;
         tf[11] = child_pid; /* EAX is at offset 44 / sizeof(uint32_t) = 11 */
         parent->state = PROCESS_STATE_READY;
-        /* Only free resources on death — stopped children stay alive */
         if (cleanup && child != current_process)
             process_cleanup_child(child);
     }

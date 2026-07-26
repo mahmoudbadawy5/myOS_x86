@@ -3,7 +3,7 @@
 #include <types.h>
 #include <isr.h>
 
-#define MAX_SYSCALLS 31
+#define MAX_SYSCALLS 32
 
 void init_syscalls(void);
 int32_t syscall_test0(struct regs *regs);

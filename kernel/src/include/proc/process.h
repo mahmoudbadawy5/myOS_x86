@@ -110,6 +110,7 @@ int load_program(pcb_t *proc, const char *path, int argc, const char **argv);
 void schedule(struct regs *r);
 
 uint32_t find_terminated_child(uint32_t parent_pid);
+uint32_t find_stopped_child(uint32_t parent_pid);
 int has_live_children(uint32_t parent_pid);
 void unblock_parent(uint32_t child_pid, int cleanup);
 pcb_t *get_process_by_pid(uint32_t pid);

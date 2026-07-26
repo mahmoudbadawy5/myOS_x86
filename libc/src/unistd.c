@@ -18,6 +18,7 @@ sighandler_t signal(int signum, sighandler_t handler) {
 }
 int sigreturn(void) { return sys_sigreturn(); }
 int setpgid(int pid, int pgid) { return sys_setpgid(pid, pgid); }
+int waitpid(int pid, int options) { return sys_waitpid(pid, options); }
 
 /* File descriptors */
 int open(const char *path, const char *mode) { return sys_open(path, mode); }
