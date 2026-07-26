@@ -21,45 +21,49 @@ int main(int argc, char **argv)
         }
     }
 
-    if (!filename) {
-        print("head: missing file operand\n");
-        return 1;
-    }
-
-    FILE *fp = fopen(filename, "r");
-    if (!fp) {
-        print("head: ");
-        print(filename);
-        print(": no such file\n");
-        return 1;
-    }
-
-    /* Read entire file into memory */
-    fseek(fp, 0, SEEK_END);
-    int fsize = ftell(fp);
-    fseek(fp, 0, SEEK_SET);
-
-    if (fsize <= 0) {
-        fclose(fp);
-        return 0;
-    }
-
-    char *data = malloc(fsize);
-    if (!data) {
-        print("head: out of memory\n");
-        fclose(fp);
-        return 1;
-    }
-
+    char *data = 0;
     int total = 0;
-    while (total < fsize) {
-        int n = fread(data + total, 1, fsize - total, fp);
-        if (n <= 0) break;
-        total += n;
-    }
-    fclose(fp);
 
-    /* Print first max_lines lines */
+    if (filename) {
+        FILE *fp = fopen(filename, "r");
+        if (!fp) {
+            print("head: ");
+            print(filename);
+            print(": no such file\n");
+            return 1;
+        }
+        fseek(fp, 0, SEEK_END);
+        int fsize = ftell(fp);
+        fseek(fp, 0, SEEK_SET);
+        if (fsize > 0) {
+            data = malloc(fsize);
+            if (!data) { print("head: out of memory\n"); fclose(fp); return 1; }
+            while (total < fsize) {
+                int n = fread(data + total, 1, fsize - total, fp);
+                if (n <= 0) break;
+                total += n;
+            }
+        }
+        fclose(fp);
+    } else {
+        int cap = 512;
+        data = malloc(cap);
+        if (!data) { print("head: out of memory\n"); return 1; }
+        char buf[512];
+        int n;
+        while ((n = sys_read_fd(0, buf, sizeof(buf))) > 0) {
+            while (total + n > cap) {
+                cap *= 2;
+                data = realloc(data, cap);
+                if (!data) { print("head: out of memory\n"); return 1; }
+            }
+            memcpy(data + total, buf, n);
+            total += n;
+        }
+    }
+
+    if (total <= 0) return 0;
+
     int lines = 0;
     int i = 0;
     char outbuf[256];

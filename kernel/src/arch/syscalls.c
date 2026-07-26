@@ -248,6 +248,24 @@ int32_t syscall_exit(struct regs *regs)
 {
     (void)regs;
     if (current_process) {
+        /* Close all open file descriptors so pipe endpoints are released.
+         * Without this, pipe writers/readers stay open and the other end
+         * busy-waits forever (e.g. cat hello.txt | wc hangs). */
+        for (int i = 0; i < MAX_FILES; i++) {
+            if (current_process->files_open[i]) {
+                FILE *fp = current_process->files_open[i];
+                fs_node_t *node = fp->file;
+                if (node && node->refcount > 0)
+                    node->refcount--;
+                if (node && node->refcount == 0) {
+                    close_fs(node);
+                    free(node);
+                }
+                free(fp);
+                current_process->files_open[i] = 0;
+            }
+        }
+
         /* Kill all live children so they don't become orphans */
         kill_children_of(current_process->pid);
 
@@ -472,21 +490,27 @@ int32_t syscall_exec(struct regs *regs)
         return -1;
     }
 
+    /* load_elf() sets state = PROCESS_STATE_NEW (correct for
+     * create_process/spawn which use the first-run path).  But exec
+     * replaces the process image in-place via trap-frame overwrite +
+     * iret — it does NOT go through switch_to_process's first-run
+     * path.  If we leave state as NEW, the next timer-interrupt ->
+     * schedule -> switch_to_process will see NEW, take .first_run,
+     * reload the IRET frame from kernel_stack_top, and re-enter the
+     * program from its entry point — causing the double-exec bug.
+     * Restore state to RUNNING so the scheduler treats this as a
+     * normal context switch. */
+    proc->state = PROCESS_STATE_RUNNING;
+
     /* Overwrite the CPU-pushed IRET frame in the trap frame so that
      * the handler's iretd jumps to the new program, not back to the
      * old exec wrapper code (which is unmapped in the new page dir). */
-    volatile uint32_t *iret = (volatile uint32_t *)((uint32_t *)regs + 14); /* eip at offset 56 */
+    uint32_t *iret = (uint32_t *)((uint32_t *)regs + 14); /* eip at offset 56 */
     iret[0] = proc->regs.eip;  /* EIP = new entry point */
     iret[1] = 0x1B;             /* CS  = user code */
     iret[2] = 0x202;            /* EFLAGS */
     iret[3] = proc->regs.esp;  /* ESP = new user stack */
     iret[4] = 0x23;             /* SS  = user data */
-
-    /* CPU memory fence: ensure ALL prior stores (including the IRET
-     * frame writes above) are committed to memory before we change
-     * CR3.  A compiler barrier alone is insufficient — QEMU may not
-     * serialize stores vs CR3 writes without a real fence. */
-    __asm__ __volatile__("sfence" ::: "memory");
 
     /* Switch to the new process page directory before iretd so the
      * user-mode code can access its pages.  The new dir includes
