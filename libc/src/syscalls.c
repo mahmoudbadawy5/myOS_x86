@@ -201,3 +201,8 @@ int sys_dup2(int oldfd, int newfd)
     __asm__ __volatile__("int $0x80" : "=a"(ret) : "a"(27), "b"(oldfd), "c"(newfd) : "memory", "cc");
     return ret;
 }
+
+void sys_yield(void)
+{
+    __asm__ __volatile__("int $0x80" : : "a"(6) : "memory", "cc");
+}

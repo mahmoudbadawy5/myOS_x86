@@ -28,6 +28,7 @@ int main(int argc, char **argv)
             case 2: state_str = "running"; break;
             case 3: state_str = "blocked"; break;
             case 4: state_str = "terminated"; break;
+            case 5: state_str = "stopped"; break;
             default: state_str = "?"; break;
         }
 

@@ -18,6 +18,41 @@ static uint32_t next_pid = 1;
 static uint32_t num_processes = 0, cur_proccess_id = -1;
 
 pcb_t *current_process = NULL;
+uint32_t foreground_pgid = 0; /* 0 = shell is foreground (no child running) */
+
+/* Initialize signal-related PCB fields.
+ * If parent is NULL: defaults (SIG_DFL, no blocked signals).
+ * If parent is non-NULL: inherit pgid, sigmask, dispositions from parent. */
+static void init_process_signals(pcb_t *pcb, pcb_t *parent)
+{
+    pcb->signal_pending = 0;
+    pcb->stopped_by = 0;
+    if (parent) {
+        pcb->pgid = parent->pgid;
+        pcb->sigmask = parent->sigmask;
+        for (int i = 0; i < NSIG; i++)
+            pcb->signal_disposition[i] = parent->signal_disposition[i];
+    } else {
+        pcb->pgid = pcb->pid;
+        pcb->sigmask = 0;
+        for (int i = 0; i < NSIG; i++)
+            pcb->signal_disposition[i] = SIG_DFL;
+        pcb->signal_disposition[SIGCHLD] = SIG_IGN;
+    }
+}
+
+/* Allocate and set up a kernel stack for a process.
+ * Returns 0 on failure, non-zero on success. */
+static int alloc_kernel_stack(pcb_t *pcb)
+{
+    uint32_t kstack_virt = (uint32_t)malloc(KERNEL_STACK_SIZE);
+    if (!kstack_virt) return 0;
+    pcb->kernel_stack_alloc = kstack_virt;
+    pcb->kernel_stack_bottom = kstack_virt;
+    uint32_t kstack_base = kstack_virt + KERNEL_STACK_SIZE;
+    pcb->kernel_stack_top = (kstack_base - 32) & ~0xF;
+    return 1;
+}
 
 /* Idle loop — runs when no other process is available.
  * Executes in ring 0 (kernel mode) via IRET with CS=0x08. */
@@ -52,8 +87,8 @@ void init_multitasking(void)
     idle->pid = 0;
     idle->state = PROCESS_STATE_NEW;
     idle->parent_id = 0;
-    idle->signal_pending = 0;
     idle->num_children = 0;
+    init_process_signals(idle, NULL);
     idle->proc_name[0] = 'i';
     idle->proc_name[1] = 'd';
     idle->proc_name[2] = 'l';
@@ -62,22 +97,16 @@ void init_multitasking(void)
     idle->cwd[0] = '/';
     idle->cwd[1] = '\0';
 
-    /* Allocate kernel stack for idle */
-    uint32_t kstack_virt = (uint32_t)malloc(KERNEL_STACK_SIZE);
-    idle->kernel_stack_alloc = kstack_virt;
-    idle->kernel_stack_bottom = kstack_virt;
-    uint32_t kstack_base = kstack_virt + KERNEL_STACK_SIZE;
-    uint32_t iret_frame = (kstack_base - 32) & ~0xF;
-    idle->kernel_stack_top = iret_frame;
+    alloc_kernel_stack(idle);
 
     /* Build IRET frame: EIP=idle_loop, CS=0x08 (kernel), EFLAGS=IF=1,
      * ESP=kernel stack top, SS=0x10 (kernel data).
      * Idle runs in ring 0 — no user segments needed. */
-    uint32_t *frame = (uint32_t *)iret_frame;
+    uint32_t *frame = (uint32_t *)idle->kernel_stack_top;
     frame[0] = (uint32_t)idle_loop;  /* EIP */
     frame[1] = 0x08;                 /* CS (kernel code) */
     frame[2] = 0x202;                /* EFLAGS (IF=1) */
-    frame[3] = iret_frame;           /* ESP (use same stack) */
+    frame[3] = idle->kernel_stack_top;  /* ESP (use same stack) */
     frame[4] = 0x10;                 /* SS (kernel data) */
 
     /* Set up registers with kernel segments */
@@ -179,8 +208,8 @@ void create_process(const char *app_path, uint32_t parent_pid, int argc, const c
     pcb->pid = next_pid++;
     pcb->state = PROCESS_STATE_BLOCKED;
     pcb->parent_id = parent_pid;
-    pcb->signal_pending = 0;
     pcb->num_children = 0;
+    init_process_signals(pcb, NULL);
     pcb->files_open[0] = malloc(sizeof(FILE));
     pcb->files_open[0]->file = stdin_node;
     pcb->files_open[0]->flags = FILE_READ;
@@ -208,13 +237,11 @@ void create_process(const char *app_path, uint32_t parent_pid, int argc, const c
         }
     }
 
-    uint32_t kstack_virt = (uint32_t) malloc(KERNEL_STACK_SIZE);
-    pcb->kernel_stack_alloc = kstack_virt;
-    pcb->kernel_stack_bottom = kstack_virt;
-
-    uint32_t kstack_base = kstack_virt + KERNEL_STACK_SIZE;
-    uint32_t iret_frame = (kstack_base - 32) & ~0xF;
-    pcb->kernel_stack_top = iret_frame;
+    if (!alloc_kernel_stack(pcb)) {
+        free(pcb->files_open[0]);
+        free(pcb->files_open[1]);
+        return;
+    }
 
     /* Increment parent's child count BEFORE load so it's always accurate */
     if (parent_pid != 0) {
@@ -260,9 +287,75 @@ void schedule(struct regs *r)
     if (cur_proccess_id != -1) {
         pcb_t *cur = &process_table[cur_proccess_id];
         if (cur->signal_pending != 0 && cur->state == PROCESS_STATE_RUNNING) {
-            cur->state = PROCESS_STATE_TERMINATED;
-            cur->signal_pending = 0;
-            unblock_parent(cur->pid);
+            uint32_t pending = cur->signal_pending;
+
+            /* SIGKILL is unblockable — always kills */
+            if (pending & SIG_BIT(SIGKILL)) {
+                cur->state = PROCESS_STATE_TERMINATED;
+                cur->signal_pending = 0;
+                unblock_parent(cur->pid);
+            } else {
+                /* Process one signal at a time */
+                for (int sig = 1; sig < NSIG; sig++) {
+                    if (!(pending & SIG_BIT(sig))) continue;
+
+                    /* Check mask — blocked signals are deferred */
+                    if (cur->sigmask & SIG_BIT(sig))
+                        continue;
+
+                    uint32_t disp = cur->signal_disposition[sig];
+
+                    if (sig == SIGCONT) {
+                        /* SIGCONT: resume if stopped, always clear pending */
+                        cur->signal_pending &= ~SIG_BIT(sig);
+                        if (cur->stopped_by) {
+                            cur->stopped_by = 0;
+                            cur->state = PROCESS_STATE_READY;
+                        }
+                        continue; /* Check for more pending signals */
+                    }
+
+                    if (sig == SIGSTOP) {
+                        /* SIGSTOP: cannot be caught or ignored, always stops */
+                        cur->signal_pending &= ~SIG_BIT(sig);
+                        cur->stopped_by = SIGSTOP;
+                        cur->state = PROCESS_STATE_STOPPED;
+                        break;
+                    }
+
+                    if (disp == SIG_IGN) {
+                        cur->signal_pending &= ~SIG_BIT(sig);
+                        continue;
+                    }
+
+                    if (disp == SIG_DFL) {
+                        /* Default actions */
+                        if (sig == SIGTSTP || sig == SIGTTIN || sig == SIGTTOU) {
+                            cur->signal_pending &= ~SIG_BIT(sig);
+                            cur->stopped_by = sig;
+                            cur->state = PROCESS_STATE_STOPPED;
+                            break;
+                        }
+                        if (sig == SIGCHLD) {
+                            /* Default: ignore */
+                            cur->signal_pending &= ~SIG_BIT(sig);
+                            continue;
+                        }
+                        /* Default: terminate */
+                        cur->signal_pending &= ~SIG_BIT(sig);
+                        cur->state = PROCESS_STATE_TERMINATED;
+                        unblock_parent(cur->pid);
+                        break;
+                    }
+
+                    /* User handler address — for now, treat as kill.
+                     * Phase 3 will set up a signal frame and jump there. */
+                    cur->signal_pending &= ~SIG_BIT(sig);
+                    cur->state = PROCESS_STATE_TERMINATED;
+                    unblock_parent(cur->pid);
+                    break;
+                }
+            }
         }
     }
 
@@ -272,8 +365,10 @@ void schedule(struct regs *r)
     int original_process_id = cur_proccess_id;
     do {
         cur_proccess_id = (cur_proccess_id + 1) % num_processes;
-        if(process_table[cur_proccess_id].state == PROCESS_STATE_READY || process_table[cur_proccess_id].state == PROCESS_STATE_NEW) break;
-    } while(cur_proccess_id != original_process_id);
+        pcb_t *p = &process_table[cur_proccess_id];
+        if (p->state == PROCESS_STATE_READY || p->state == PROCESS_STATE_NEW)
+            break;
+    } while (cur_proccess_id != original_process_id);
 
     pcb_t *next = &process_table[cur_proccess_id];
     if (next->state == PROCESS_STATE_TERMINATED) {
@@ -347,6 +442,10 @@ int has_live_children(uint32_t parent_pid)
  * children list. Switches to kernel page directory for cleanup. */
 void process_cleanup_child(pcb_t *child)
 {
+    /* Reset signal state so stale signals don't leak into reused slots */
+    child->signal_pending = 0;
+    child->stopped_by = 0;
+
     /* Free kernel stack */
     if (child->kernel_stack_alloc) {
         free((void *)child->kernel_stack_alloc);
@@ -412,8 +511,8 @@ pcb_t *fork_process(pcb_t *parent, struct regs *regs)
     child->pid = next_pid++;
     child->state = PROCESS_STATE_BLOCKED;
     child->parent_id = parent->pid;
-    child->signal_pending = 0;
     child->num_children = 0;
+    init_process_signals(child, parent);
 
     /* Copy proc_name */
     for (int i = 0; i < 19; i++)
@@ -428,17 +527,11 @@ pcb_t *fork_process(pcb_t *parent, struct regs *regs)
     }
     child->cwd[ci] = '\0';
 
-    /* Allocate new kernel stack */
-    uint32_t kstack_virt = (uint32_t)malloc(KERNEL_STACK_SIZE);
-    if (!kstack_virt) {
+    if (!alloc_kernel_stack(child)) {
         parent->num_children--;
         child->state = PROCESS_STATE_TERMINATED;
         return NULL;
     }
-    child->kernel_stack_alloc = kstack_virt;
-    child->kernel_stack_bottom = kstack_virt;
-    uint32_t kstack_base = kstack_virt + KERNEL_STACK_SIZE;
-    child->kernel_stack_top = (kstack_base - 32) & ~0xF;
 
     /* Register child in parent's children list */
     parent->children_id[parent->num_children] = child->pid;

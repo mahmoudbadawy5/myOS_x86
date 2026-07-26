@@ -10,12 +10,44 @@
 #define USER_STACK_PAGES 4
 #define KERNEL_STACK_SIZE (2 * 4096)
 
+/* Signal infrastructure */
+#define NSIG        32
+#define SIG_DFL     0   /* Default disposition */
+#define SIG_IGN     1   /* Ignore signal */
+
+/* Signal numbers */
+#define SIGHUP      1
+#define SIGINT      2
+#define SIGQUIT     3
+#define SIGILL      4
+#define SIGTRAP     5
+#define SIGABRT     6
+#define SIGBUS      7
+#define SIGFPE      8
+#define SIGKILL     9
+#define SIGUSR1    10
+#define SIGSEGV    11
+#define SIGUSR2    12
+#define SIGPIPE    13
+#define SIGALRM    14
+#define SIGTERM    15
+#define SIGSTOP    17  /* Cannot be caught or ignored */
+#define SIGCONT    18
+#define SIGCHLD    19
+#define SIGTSTP    20  /* Ctrl+Z — can be caught */
+#define SIGTTIN    21
+#define SIGTTOU    22
+
+/* Bitmask helpers */
+#define SIG_BIT(sig) (1U << (sig))
+
 typedef enum {
     PROCESS_STATE_NEW,
     PROCESS_STATE_READY,
     PROCESS_STATE_RUNNING,
     PROCESS_STATE_BLOCKED,
-    PROCESS_STATE_TERMINATED
+    PROCESS_STATE_TERMINATED,
+    PROCESS_STATE_STOPPED   /* Suspended by SIGSTOP/SIGTSTP */
 } process_state_t;
 
 typedef struct {
@@ -42,13 +74,21 @@ typedef struct pcb {
     uint32_t children_id[MAX_PROCESSES];
     uint32_t parent_id;
 
-    int signal_pending;     /* Non-zero = pending signal (e.g. SIGINT=2) */
-    uint32_t num_children;  /* Number of live children */
+    uint32_t signal_pending;            /* Pending signals bitmask */
+    uint32_t signal_disposition[NSIG];  /* SIG_DFL, SIG_IGN, or handler address */
+    uint32_t sigmask;                   /* Blocked signals bitmask */
+    uint32_t stopped_by;                /* Signal that stopped us (0 = not stopped) */
+
+    uint32_t pgid;                      /* Process group ID */
+    uint32_t num_children;              /* Number of live children */
     char proc_name[20];
-    uint32_t kernel_stack_alloc; /* Base of malloc'd kernel stack (for free) */
-    uint32_t kernel_stack_bottom; /* Lowest mapped page of kernel stack */
-    char cwd[256];               /* Current working directory */
+    uint32_t kernel_stack_alloc;        /* Base of malloc'd kernel stack (for free) */
+    uint32_t kernel_stack_bottom;       /* Lowest mapped page of kernel stack */
+    char cwd[256];                      /* Current working directory */
 } pcb_t;
+
+/* Foreground process group — keyboard sends signals here */
+extern uint32_t foreground_pgid;
 
 void init_multitasking(void);
 void create_process(const char *app_name, uint32_t parent_pid, int argc, const char **argv);

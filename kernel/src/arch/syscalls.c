@@ -672,7 +672,7 @@ int32_t syscall_kill(struct regs *regs)
     uint32_t target_pid = regs->ebx;
     uint32_t signal = regs->ecx;
 
-    if (target_pid == 0 || signal == 0)
+    if (target_pid == 0 || signal == 0 || signal >= NSIG)
         return -1;
 
     pcb_t *target = get_process_by_pid(target_pid);
@@ -682,7 +682,15 @@ int32_t syscall_kill(struct regs *regs)
     if (target->state == PROCESS_STATE_TERMINATED)
         return -1;
 
-    target->signal_pending = signal;
+    /* Set the signal bit (bitwise OR — don't overwrite pending signals) */
+    target->signal_pending |= SIG_BIT(signal);
+
+    /* SIGCONT also wakes a stopped process */
+    if (signal == SIGCONT && target->state == PROCESS_STATE_STOPPED) {
+        target->stopped_by = 0;
+        target->state = PROCESS_STATE_READY;
+    }
+
     return 0;
 }
 
