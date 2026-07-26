@@ -116,14 +116,31 @@ int parse_line(char *line, stage_t *stages)
     return num_stages;
 }
 
+void run_command(int argc, char **args);
+
+static int is_builtin(stage_t *st)
+{
+    if (st->argc == 0) return 0;
+    return (strcmp(st->args[0], "help") == 0 ||
+            strcmp(st->args[0], "clear") == 0 ||
+            strcmp(st->args[0], "cd") == 0 ||
+            strcmp(st->args[0], "pwd") == 0);
+}
+
 /* Run a single stage (command with redirections) in a child process.
  * If pipe_in/pipe_out are set, they override stdin/stdout.
- * Returns child PID. */
-int run_stage(stage_t *st, int pipe_in, int pipe_out)
+ * If extra_fd >= 0, close it in the child (non-adjacent pipe end).
+ * If builtin, run in child after redirections instead of exec.
+ * Returns child PID, or -1 on fork failure. */
+int run_stage(stage_t *st, int pipe_in, int pipe_out, int extra_fd)
 {
     int pid = fork();
     if (pid == 0) {
         /* Child */
+
+        /* Close non-adjacent pipe end inherited from parent */
+        if (extra_fd >= 0)
+            sys_close(extra_fd);
 
         /* Apply pipe redirections first */
         if (pipe_in >= 0) {
@@ -161,7 +178,13 @@ int run_stage(stage_t *st, int pipe_in, int pipe_out)
             }
         }
 
-        /* Build command line and exec */
+        /* If builtin, run in child (handles redirected builtins like cd > file) */
+        if (is_builtin(st)) {
+            run_command(st->argc, st->args);
+            exit(0);
+        }
+
+        /* External command — build cmdline and exec */
         char cmdline[LINE_MAX];
         int pos = 0;
         for (int i = 0; i < st->argc; i++) {
@@ -221,14 +244,13 @@ void run_command(int argc, char **args)
             cmdline[pos] = '\0';
             exit(exec(cmdline));
         }
-        wait();
+        if (pid > 0) wait();
     }
 }
 
 int main(void)
 {
     static char line[LINE_MAX];
-    static char *args[MAX_ARGS];
     static stage_t stages[MAX_STAGES];
 
     print("\x1b\x0F\x0C");
@@ -242,37 +264,35 @@ int main(void)
             int num_stages = parse_line(line, stages);
 
             if (num_stages == 1 && stages[0].argc > 0) {
-                /* Single command — check for builtins first */
                 stage_t *st = &stages[0];
-                int has_redirect = st->in_file || st->out_file;
-                int is_builtin = (strcmp(st->args[0], "help") == 0 ||
-                                  strcmp(st->args[0], "clear") == 0 ||
-                                  strcmp(st->args[0], "cd") == 0 ||
-                                  strcmp(st->args[0], "pwd") == 0);
 
-                if (is_builtin && !has_redirect) {
+                if (is_builtin(st) && !st->in_file && !st->out_file) {
+                    /* Non-redirected builtin — run in parent */
                     run_command(st->argc, st->args);
                 } else {
                     /* External command or redirected builtin */
-                    int pid = run_stage(st, -1, -1);
-                    wait();
+                    int pid = run_stage(st, -1, -1, -1);
+                    if (pid > 0) wait();
                 }
             } else if (num_stages > 1) {
                 /* Pipeline: cmd1 | cmd2 | ... | cmdN */
-                int prev_fd = -1; /* read end from previous stage */
+                int prev_fd = -1;
+                int child_count = 0;
 
                 for (int i = 0; i < num_stages; i++) {
                     stage_t *st = &stages[i];
                     int pipe_fds[2];
                     int next_fd = -1;
+                    int extra_fd = -1;
 
                     /* Create pipe for all but the last stage */
                     if (i < num_stages - 1) {
                         pipe(pipe_fds);
                         next_fd = pipe_fds[1]; /* write end goes to this stage's stdout */
+                        extra_fd = pipe_fds[0]; /* read end is non-adjacent — close in child */
                     }
 
-                    int pid = run_stage(st, prev_fd, next_fd);
+                    int pid = run_stage(st, prev_fd, next_fd, extra_fd);
 
                     /* Close pipe ends in parent */
                     if (prev_fd >= 0) sys_close(prev_fd);
@@ -280,10 +300,12 @@ int main(void)
                         sys_close(next_fd);
                         prev_fd = pipe_fds[0]; /* read end for next stage */
                     }
+
+                    if (pid > 0) child_count++;
                 }
 
-                /* Wait for all children */
-                for (int i = 0; i < num_stages; i++)
+                /* Wait for successfully created children only */
+                for (int i = 0; i < child_count; i++)
                     wait();
             }
 

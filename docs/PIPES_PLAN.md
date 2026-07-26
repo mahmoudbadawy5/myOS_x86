@@ -20,7 +20,7 @@ Fix:
 - Allocate new `FILE` via malloc
 - Copy `flags` and `file` pointer from original
 - Increment `fs_node_t.refcount`
-- If pipe (`node->flags == FS_PIPE`), increment `pipe_buf_t.refcount`
+- Do NOT increment `pipe_buf_t.refcount` (endpoint-node lifetime, not per-FILE)
 - Store new FILE in first free slot
 
 ### 1.2 Add dup2(oldfd, newfd) syscall
@@ -37,9 +37,9 @@ Files to update:
 Logic:
 1. Validate old_fd and new_fd < MAX_FILES
 2. Check old_fd is open
-3. If new_fd is open, close it (call syscall_close logic)
-4. Allocate new FILE, copy flags/file from old
-5. Increment refcounts (same as dup fix)
+3. Allocate new FILE before closing new_fd (if alloc fails, return -1 without touching new_fd)
+4. If new_fd is open, close it (call syscall_close logic)
+5. Copy flags/file from old, increment node->refcount
 6. Store in `files_open[new_fd]`
 7. Return new_fd
 
@@ -47,7 +47,8 @@ Logic:
 **File**: `kernel/src/proc/process.c` lines 515-528 (fd copy loop)
 
 Current: increments `fs_node_t.refcount` but not `pipe_buf_t.refcount`.
-Fix: when `new_fp->file->flags == FS_PIPE`, also increment `((pipe_buf_t*)new_fp->file->ptr)->refcount`.
+Fix: increment `fs_node_t.refcount` only. Do NOT increment `pipe_buf_t.refcount`
+(endpoint-node lifetime, not per-FILE copy; `pipe_close_fn` handles cleanup).
 
 ## Phase 2: Pipe Blocking
 

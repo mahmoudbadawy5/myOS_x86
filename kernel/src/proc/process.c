@@ -528,10 +528,6 @@ pcb_t *fork_process(pcb_t *parent, struct regs *regs)
             new_fp->file = parent->files_open[i]->file;
             if (new_fp->file)
                 new_fp->file->refcount++;
-            if (new_fp->file && new_fp->file->flags == FS_PIPE) {
-                pipe_buf_t *pb = (pipe_buf_t *)new_fp->file->ptr;
-                if (pb) pb->refcount++;
-            }
             child->files_open[i] = new_fp;
         } else {
             child->files_open[i] = NULL;

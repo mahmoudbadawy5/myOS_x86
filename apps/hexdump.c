@@ -51,15 +51,16 @@ int main(int argc, char **argv)
         while ((n = sys_read_fd(0, buf, sizeof(buf))) > 0) {
             while (total + n > cap) {
                 cap *= 2;
-                data = realloc(data, cap);
-                if (!data) { print("hexdump: out of memory\n"); return 1; }
+                char *tmp = realloc(data, cap);
+                if (!tmp) { free(data); print("hexdump: out of memory\n"); return 1; }
+                data = tmp;
             }
             memcpy(data + total, buf, n);
             total += n;
         }
     }
 
-    if (total <= 0) return 0;
+    if (total <= 0) { free(data); return 0; }
 
     for (int offset = 0; offset < total; offset += 16) {
         print_hex(offset, 8);

@@ -45,8 +45,9 @@ int main(int argc, char **argv)
         while ((n = sys_read_fd(0, buf, sizeof(buf))) > 0) {
             while (total + n > capacity) {
                 capacity *= 2;
-                data = realloc(data, capacity);
-                if (!data) { print("grep: out of memory\n"); return 1; }
+                char *tmp = realloc(data, capacity);
+                if (!tmp) { free(data); print("grep: out of memory\n"); return 1; }
+                data = tmp;
             }
             memcpy(data + total, buf, n);
             total += n;

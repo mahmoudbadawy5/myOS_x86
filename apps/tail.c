@@ -54,23 +54,27 @@ int main(int argc, char **argv)
         while ((n = sys_read_fd(0, buf, sizeof(buf))) > 0) {
             while (total + n > cap) {
                 cap *= 2;
-                data = realloc(data, cap);
-                if (!data) { print("tail: out of memory\n"); return 1; }
+                char *tmp = realloc(data, cap);
+                if (!tmp) { free(data); print("tail: out of memory\n"); return 1; }
+                data = tmp;
             }
             memcpy(data + total, buf, n);
             total += n;
         }
     }
 
-    if (total <= 0) return 0;
+    if (total <= 0) { free(data); return 0; }
+
+    /* Skip trailing newline before counting lines */
+    int end = total - 1;
+    if (end >= 0 && data[end] == '\n') end--;
 
     int nl_count = 0;
-    int pos = total - 1;
+    int pos = end;
     while (pos >= 0 && nl_count < max_lines) {
         if (data[pos] == '\n') nl_count++;
-        pos--;
+        if (nl_count < max_lines) pos--;
     }
-    pos++;
 
     if (nl_count < max_lines)
         pos = 0;

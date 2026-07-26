@@ -14,8 +14,9 @@ static int read_all_stdin(char **out)
     while ((n = sys_read_fd(0, tmp, sizeof(tmp))) > 0) {
         while (total + n > cap) {
             cap *= 2;
-            buf = realloc(buf, cap);
-            if (!buf) return -1;
+            char *new_buf = realloc(buf, cap);
+            if (!new_buf) { free(buf); return -1; }
+            buf = new_buf;
         }
         for (int i = 0; i < n; i++) buf[total + i] = tmp[i];
         total += n;

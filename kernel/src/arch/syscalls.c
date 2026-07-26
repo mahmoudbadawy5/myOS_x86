@@ -475,10 +475,20 @@ int32_t syscall_exec(struct regs *regs)
     }
     proc->memory_regions = 0;
 
-    /* Free old files (keep stdin/stdout) */
+    /* Free old files (keep stdin/stdout) — use proper close logic
+     * to decrement node refcount, invoke close_fs (pipe endpoint
+     * cleanup), and free the node when refcount hits 0. */
     for (int i = 2; i < MAX_FILES; i++) {
         if (proc->files_open[i]) {
-            free(proc->files_open[i]);
+            FILE *fp = proc->files_open[i];
+            fs_node_t *node = fp->file;
+            if (node && node->refcount > 0)
+                node->refcount--;
+            if (node && node->refcount == 0) {
+                close_fs(node);
+                free(node);
+            }
+            free(fp);
             proc->files_open[i] = 0;
         }
     }
@@ -544,10 +554,6 @@ int32_t syscall_dup(struct regs *regs)
             new_fp->file = fp->file;
             if (new_fp->file)
                 new_fp->file->refcount++;
-            if (new_fp->file && new_fp->file->flags == FS_PIPE) {
-                pipe_buf_t *pb = (pipe_buf_t *)new_fp->file->ptr;
-                if (pb) pb->refcount++;
-            }
             current_process->files_open[i] = new_fp;
             return i;
         }
@@ -575,6 +581,12 @@ int32_t syscall_dup2(struct regs *regs)
     if (!fp)
         return -1;
 
+    /* Allocate new FILE before closing old one — if alloc fails,
+     * return -1 without touching new_fd (preserving the original). */
+    FILE *new_fp = malloc(sizeof(FILE));
+    if (!new_fp)
+        return -1;
+
     /* Close new_fd if already open */
     if (current_process->files_open[new_fd]) {
         struct regs close_regs;
@@ -582,17 +594,10 @@ int32_t syscall_dup2(struct regs *regs)
         syscall_close(&close_regs);
     }
 
-    FILE *new_fp = malloc(sizeof(FILE));
-    if (!new_fp)
-        return -1;
     new_fp->flags = fp->flags;
     new_fp->file = fp->file;
     if (new_fp->file)
         new_fp->file->refcount++;
-    if (new_fp->file && new_fp->file->flags == FS_PIPE) {
-        pipe_buf_t *pb = (pipe_buf_t *)new_fp->file->ptr;
-        if (pb) pb->refcount++;
-    }
     current_process->files_open[new_fd] = new_fp;
     return new_fd;
 }
