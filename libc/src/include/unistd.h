@@ -17,6 +17,7 @@ void yield(void);
 typedef void (*sighandler_t)(int signum);
 sighandler_t signal(int signum, sighandler_t handler);
 int sigreturn(void);
+int setpgid(int pid, int pgid);
 
 /* File descriptors */
 int open(const char *path, const char *mode);

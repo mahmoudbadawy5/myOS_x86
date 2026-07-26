@@ -7,6 +7,36 @@
 #include <fs/vfs.h>
 #include <proc/process.h>
 
+/* PS/2 keyboard scancodes (make codes, set 1) */
+#define SCANCODE_ESC       0x01
+#define SCANCODE_BACKSPACE 0x0E
+#define SCANCODE_TAB       0x0F
+#define SCANCODE_ENTER     0x1C
+#define SCANCODE_CTRL_L    0x1D
+#define SCANCODE_SHIFT_L   0x2A
+#define SCANCODE_SHIFT_R   0x36
+#define SCANCODE_ALT_L     0x38
+#define SCANCODE_CAPSLOCK  0x3A
+#define SCANCODE_F1        0x3B
+#define SCANCODE_F10       0x44
+#define SCANCODE_SCROLLLOCK 0x46
+#define SCANCODE_HOME      0x47
+#define SCANCODE_UP        0x48
+#define SCANCODE_PAGEUP    0x49
+#define SCANCODE_LEFT      0x4B
+#define SCANCODE_RIGHT     0x4D
+#define SCANCODE_END       0x4F
+#define SCANCODE_DOWN      0x50
+#define SCANCODE_PAGEDOWN  0x51
+#define SCANCODE_INSERT    0x52
+#define SCANCODE_DELETE    0x53
+#define SCANCODE_F11       0x57
+#define SCANCODE_F12       0x58
+
+/* Ctrl+key scancodes */
+#define SCANCODE_KEY_C     0x2E
+#define SCANCODE_KEY_Z     0x2C
+
 /* KBDUS means US Keyboard Layout. This is a scancode table
  *  used to layout a standard US keyboard. I have left some
  *  comments in to give you an idea of what key is what, even
@@ -103,29 +133,51 @@ void keyboard_handler(struct regs *r)
 
     if (scancode & 0x80)
     {
-        /* Key release */
-        if (scancode == 0xAA || scancode == 0xB6)
+        /* Key release: release codes = make code | 0x80 */
+        uint8_t release = scancode & 0x7F;
+        if (release == SCANCODE_SHIFT_L || release == SCANCODE_SHIFT_R)
             shift = 0;
-        else if (scancode == 0x9D)
+        else if (release == SCANCODE_CTRL_L)
             ctrl = 0;
     }
     else
     {
-        if (scancode == 0x2A || scancode == 0x36)
+        if (scancode == SCANCODE_SHIFT_L || scancode == SCANCODE_SHIFT_R)
             shift = 1;
-        if (scancode == 0x1D)
+        if (scancode == SCANCODE_CTRL_L)
             ctrl = 1;
-        if (scancode == 0x3A)
+        if (scancode == SCANCODE_CAPSLOCK)
             caps_lock = !caps_lock;
 
-        /* Ctrl+C: send SIGINT (signal 2) to current process */
-        if (ctrl && scancode == 0x2E)
+        /* Ctrl+C: send SIGINT (signal 2) to foreground process group */
+        if (ctrl && scancode == SCANCODE_KEY_C)
         {
-            if (current_process) {
-                current_process->signal_pending = 2;
-                outportb(0x20, 0x20); /* EOI before schedule (which never returns) */
-                schedule(r);
+            if (foreground_pgid) {
+                for (int i = 0; i < MAX_PROCESSES; i++) {
+                    if (process_table[i].pgid == foreground_pgid &&
+                        process_table[i].state != PROCESS_STATE_TERMINATED) {
+                        process_table[i].signal_pending |= SIG_BIT(SIGINT);
+                    }
+                }
             }
+            outportb(0x20, 0x20);
+            schedule(r);
+            return;
+        }
+
+        /* Ctrl+Z: send SIGTSTP (signal 20) to foreground process group */
+        if (ctrl && scancode == SCANCODE_KEY_Z)
+        {
+            if (foreground_pgid) {
+                for (int i = 0; i < MAX_PROCESSES; i++) {
+                    if (process_table[i].pgid == foreground_pgid &&
+                        process_table[i].state != PROCESS_STATE_TERMINATED) {
+                        process_table[i].signal_pending |= SIG_BIT(SIGTSTP);
+                    }
+                }
+            }
+            outportb(0x20, 0x20);
+            schedule(r);
             return;
         }
 

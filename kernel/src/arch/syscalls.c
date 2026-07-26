@@ -103,6 +103,7 @@ void resolve_path(const char *user_path, char *buf, int buf_size)
 
 int32_t syscall_sigreturn(struct regs *regs);
 int32_t syscall_signal(struct regs *regs);
+int32_t syscall_setpgid(struct regs *regs);
 
 int32_t (*syscalls[MAX_SYSCALLS])(struct regs *) = {
     syscall_test0,
@@ -135,6 +136,7 @@ int32_t (*syscalls[MAX_SYSCALLS])(struct regs *) = {
     syscall_dup2,
     syscall_sigreturn,  /* #28 */
     syscall_signal,     /* #29 */
+    syscall_setpgid,    /* #30 */
 };
 
 void init_syscalls(void)
@@ -275,7 +277,7 @@ int32_t syscall_exit(struct regs *regs)
         kill_children_of(current_process->pid);
 
         current_process->state = PROCESS_STATE_TERMINATED;
-        unblock_parent(current_process->pid);
+        unblock_parent(current_process->pid, 1);
         current_process = NULL;
         schedule(regs);
     }
@@ -1252,5 +1254,41 @@ int32_t syscall_signal(struct regs *regs)
         return -1;
 
     current_process->signal_disposition[signum] = handler;
+    return 0;
+}
+
+/*
+    setpgid — set a process's pgid and the foreground process group for keyboard signal routing.
+    ebx: pid (0 = use pgid directly as foreground group)
+    ecx: pgid
+    Returns: 0 on success, -1 on error.
+*/
+int32_t syscall_setpgid(struct regs *regs)
+{
+    uint32_t pid = regs->ebx;
+    uint32_t pgid = regs->ecx;
+
+    /* pid=0, pgid=0 → reset foreground to shell */
+    if (pid == 0 && pgid == 0) {
+        foreground_pgid = 0;
+        return 0;
+    }
+
+    /* pid=0, pgid=X → set foreground group to X only */
+    if (pid == 0) {
+        foreground_pgid = pgid;
+        return 0;
+    }
+
+    /* pid!=0 → change that process's pgid and set it as foreground */
+    pcb_t *proc = get_process_by_pid(pid);
+    if (!proc)
+        return -1;
+
+    if (pgid == 0)
+        pgid = pid;
+
+    proc->pgid = pgid;
+    foreground_pgid = pgid;
     return 0;
 }

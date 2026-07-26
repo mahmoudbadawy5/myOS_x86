@@ -220,3 +220,10 @@ int sys_signal(int signum, void *handler)
     __asm__ __volatile__("int $0x80" : "=a"(ret) : "a"(29), "b"(signum), "c"(handler) : "memory", "cc");
     return ret;
 }
+
+int sys_setpgid(int pid, int pgid)
+{
+    int ret;
+    __asm__ __volatile__("int $0x80" : "=a"(ret) : "a"(30), "b"(pid), "c"(pgid) : "memory", "cc");
+    return ret;
+}

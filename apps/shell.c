@@ -244,7 +244,11 @@ void run_command(int argc, char **args)
             cmdline[pos] = '\0';
             exit(exec(cmdline));
         }
-        if (pid > 0) wait();
+        if (pid > 0) {
+            setpgid(pid, pid);
+            wait();
+            setpgid(0, 0);
+        }
     }
 }
 
@@ -272,7 +276,11 @@ int main(void)
                 } else {
                     /* External command or redirected builtin */
                     int pid = run_stage(st, -1, -1, -1);
-                    if (pid > 0) wait();
+                    if (pid > 0) {
+                        setpgid(pid, pid);
+                        wait();
+                        setpgid(0, 0);
+                    }
                 }
             } else if (num_stages > 1) {
                 /* Pipeline: cmd1 | cmd2 | ... | cmdN */
@@ -301,12 +309,17 @@ int main(void)
                         prev_fd = pipe_fds[0]; /* read end for next stage */
                     }
 
-                    if (pid > 0) child_count++;
+                    if (pid > 0) {
+                        child_count++;
+                        if (child_count == 1)
+                            setpgid(pid, pid);
+                    }
                 }
 
                 /* Wait for successfully created children only */
                 for (int i = 0; i < child_count; i++)
                     wait();
+                setpgid(0, 0);  /* Shell is foreground again */
             }
 
             print("\x1b\x0F");

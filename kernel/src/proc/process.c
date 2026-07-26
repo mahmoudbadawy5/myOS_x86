@@ -337,7 +337,7 @@ void schedule(struct regs *r)
             if (pending & SIG_BIT(SIGKILL)) {
                 cur->state = PROCESS_STATE_TERMINATED;
                 cur->signal_pending = 0;
-                unblock_parent(cur->pid);
+                unblock_parent(cur->pid, 1);
             } else {
                 /* Process one signal at a time */
                 for (int sig = 1; sig < NSIG; sig++) {
@@ -364,6 +364,7 @@ void schedule(struct regs *r)
                         cur->signal_pending &= ~SIG_BIT(sig);
                         cur->stopped_by = SIGSTOP;
                         cur->state = PROCESS_STATE_STOPPED;
+                        unblock_parent(cur->pid, 0);
                         break;
                     }
 
@@ -378,6 +379,7 @@ void schedule(struct regs *r)
                             cur->signal_pending &= ~SIG_BIT(sig);
                             cur->stopped_by = sig;
                             cur->state = PROCESS_STATE_STOPPED;
+                            unblock_parent(cur->pid, 0);
                             break;
                         }
                         if (sig == SIGCHLD) {
@@ -388,7 +390,7 @@ void schedule(struct regs *r)
                         /* Default: terminate */
                         cur->signal_pending &= ~SIG_BIT(sig);
                         cur->state = PROCESS_STATE_TERMINATED;
-                        unblock_parent(cur->pid);
+                        unblock_parent(cur->pid, 1);
                         break;
                     }
 
@@ -726,20 +728,21 @@ pcb_t *fork_process(pcb_t *parent, struct regs *regs)
  * When the parent is NOT blocked (child exited before parent
  * called wait), the child stays in the list as a zombie for
  * syscall_wait's immediate-reap path to clean up. */
-void unblock_parent(uint32_t child_pid)
+void unblock_parent(uint32_t child_pid, int cleanup)
 {
     pcb_t *child = get_process_by_pid(child_pid);
     if (!child) return;
 
     pcb_t *parent = get_process_by_pid(child->parent_id);
     if (parent && parent->state == PROCESS_STATE_BLOCKED) {
+        /* Always remove from parent's children list so wait() doesn't
+         * re-block on this child */
         remove_child_from_parent(parent, child_pid);
         uint32_t *tf = (uint32_t *)parent->regs.esp;
         tf[11] = child_pid; /* EAX is at offset 44 / sizeof(uint32_t) = 11 */
         parent->state = PROCESS_STATE_READY;
-        /* Don't free the active process's stack/page-dir — it's still
-         * running until switch_to_process swaps it out. */
-        if (child != current_process)
+        /* Only free resources on death — stopped children stay alive */
+        if (cleanup && child != current_process)
             process_cleanup_child(child);
     }
 }

@@ -12,6 +12,7 @@ Bare-metal educational OS for i686, cross-compiled with i686-elf-gcc.
 
 ### Testing
 - **Do NOT run QEMU from the agent.** The user tests manually.
+- **Do NOT commit until the user has tested and confirmed it works.**
 - Apps run from FAT12 (`/mnt/`), not initrd (read-only)
 - User space apps are in `apps/`, built as ELF dynamic executables with libc.so
 - Test apps: `test_signal`, `test_signal_handler`, `test_fork`, `test_pipe`, etc.
