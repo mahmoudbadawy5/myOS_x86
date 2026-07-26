@@ -512,9 +512,14 @@ int32_t syscall_exec(struct regs *regs)
 
     /* Set up new page directory + load ELF + argv — shared helper */
     if (load_program(proc, path, argc, argv) != 0) {
-        /* Load failed — process has no valid address space; terminate it */
+        /* Load failed — process has no valid address space.
+         * Can't return to user mode (no pages for iret), so
+         * terminate directly and let the parent's wait() return. */
         proc->state = PROCESS_STATE_TERMINATED;
-        return -1;
+        unblock_parent(proc->pid, 1);
+        schedule(regs);
+        /* schedule never returns */
+        for (;;);
     }
 
     /* load_elf() sets state = PROCESS_STATE_NEW (correct for

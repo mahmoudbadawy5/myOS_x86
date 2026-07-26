@@ -38,15 +38,21 @@ Bare-metal educational OS for i686, cross-compiled with i686-elf-gcc.
 - `syscall_signal` (#29) registers user handlers in `signal_disposition[]`
 - Handler calling convention: signum in EBX, return to trampoline → sigreturn
 
-### Job Control (Phase 4 — complete)
+### Job Control (Phase 4+5+6 — complete)
 - `setpgid` syscall (#30): sets process pgid + foreground_pgid
 - Keyboard handler sends SIGINT/SIGTSTP to foreground process group
 - Shell calls `setpgid(pid, pid)` before `wait()`, `setpgid(0, 0)` after
 - `unblock_parent` with cleanup flag: stopped children wake parent without freeing resources
+- Shell ignores SIGINT/SIGTSTP, children reset to SIG_DFL before exec
+- `waitpid` syscall (#31) with WNOHANG support, detects stopped children (negative PID)
+- `has_live_children()` excludes STOPPED to prevent blocking hangs
+- Stopped children stay in children list for fg/bg tracking
+- `kill(pid, 0)` for existence checks
+- `exec` updates proc_name so `ps` shows correct program
+- Background jobs: `cmd &`, `jobs`/`fg`/`bg` builtins, job ID tracking
+- `reap_background_jobs()` cleans up terminated background jobs each prompt
 
 ### Remaining Signal Phases
-- **Phase 5 — Shell signal handling**: Shell ignores SIGINT while child runs (so Ctrl+C only kills child). Shell prints "[N]+ Stopped" on SIGTSTP. Shell uses `signal(SIGINT, SIG_IGN)` and `signal(SIGTSTP, SIG_IGN)` during foreground commands.
-- **Phase 6 — Background jobs**: `cmd &` syntax in shell, `jobs`/`fg`/`bg` builtins, background process tracking, job IDs, SIGCONT for fg/bg
 - **Phase 7 — Signal masks**: `sigprocmask` syscall, block/unblock signals, auto-block signal during handler execution (prevent re-entrant delivery)
 
 ### Process Model
@@ -55,4 +61,4 @@ Bare-metal educational OS for i686, cross-compiled with i686-elf-gcc.
 - PCB fields: `process.h`, functions: `process.c`
 
 ### Branch
-- `feat-signals`: Phase 1+2+3+4 signal work in progress
+- `feat-signals`: Phase 1+2+3+4+5+6 signal work in progress
