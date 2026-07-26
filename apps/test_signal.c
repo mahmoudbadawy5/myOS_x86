@@ -1,4 +1,4 @@
-#include <test.h>
+#include <unistd.h>
 #include <syscalls.h>
 
 /* Self-contained signal test — runs from a single shell prompt.
@@ -41,7 +41,7 @@ static const char *state_name(unsigned int state)
 /* Yield the CPU to let the scheduler run other processes */
 static void yield_now(void)
 {
-    sys_yield();
+    yield();
 }
 
 int main(void)
@@ -66,7 +66,7 @@ int main(void)
     yield_now();
 
     ps_entry_t entries[10];
-    int count = sys_ps(entries, 10);
+    int count = ps(entries, 10);
     for (int i = 0; i < count; i++) {
         if (entries[i].pid == (unsigned int)child_pid) {
             print("  Child state: ");
@@ -85,7 +85,7 @@ int main(void)
     yield_now();
     yield_now();
 
-    count = sys_ps(entries, 10);
+    count = ps(entries, 10);
     for (int i = 0; i < count; i++) {
         if (entries[i].pid == (unsigned int)child_pid) {
             print("  Child state: ");
@@ -104,7 +104,7 @@ int main(void)
     yield_now();
     yield_now();
 
-    count = sys_ps(entries, 10);
+    count = ps(entries, 10);
     int found = 0;
     for (int i = 0; i < count; i++) {
         if (entries[i].pid == (unsigned int)child_pid) {

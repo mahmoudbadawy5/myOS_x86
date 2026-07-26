@@ -1,5 +1,5 @@
 #include <stdio.h>
-#include <syscalls.h>
+#include <unistd.h>
 #include <math_extra.h>
 
 int main(void)
@@ -14,7 +14,7 @@ int main(void)
     printf("cube(%d) = %d\n", x, cube(x));
     printf("factorial(%d) = %d\n", x, factorial(x));
 
-    printf("PID: %d\n", sys_getpid());
+    printf("PID: %d\n", getpid());
 
     printf("=== Dynamic Library Test Passed! ===\n");
     return 0;

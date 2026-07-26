@@ -1,4 +1,5 @@
-#include <test.h>
+#include <unistd.h>
+#include <string.h>
 
 int main(void)
 {
@@ -11,10 +12,10 @@ int main(void)
 
     int pid = fork();
     if (pid == 0) {
-        sys_close(fds[1]);
+        close(fds[1]);
         char buf[32];
-        int n = sys_read_fd(fds[0], buf, sizeof(buf) - 1);
-        sys_close(fds[0]);
+        int n = read(fds[0], buf, sizeof(buf) - 1);
+        close(fds[0]);
         if (n > 0) {
             buf[n] = '\0';
             if (strcmp(buf, "hello pipe") == 0) {
@@ -27,9 +28,9 @@ int main(void)
         }
         exit(0);
     }
-    sys_close(fds[0]);
-    sys_write_fd(fds[1], "hello pipe", 10);
-    sys_close(fds[1]);
+    close(fds[0]);
+    write(fds[1], "hello pipe", 10);
+    close(fds[1]);
     wait();
 
     /* Test 2: EOF when writer closes */
@@ -39,10 +40,10 @@ int main(void)
 
     int pid2 = fork();
     if (pid2 == 0) {
-        sys_close(fds2[1]);
+        close(fds2[1]);
         char buf[32];
-        int n = sys_read_fd(fds2[0], buf, sizeof(buf) - 1);
-        sys_close(fds2[0]);
+        int n = read(fds2[0], buf, sizeof(buf) - 1);
+        close(fds2[0]);
         if (n == 0) {
             print(" PASS\n");
         } else {
@@ -50,8 +51,8 @@ int main(void)
         }
         exit(0);
     }
-    sys_close(fds2[0]);
-    sys_close(fds2[1]);
+    close(fds2[0]);
+    close(fds2[1]);
     wait();
 
     print("Step 3 complete\n");

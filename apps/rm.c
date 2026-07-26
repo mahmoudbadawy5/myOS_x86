@@ -1,17 +1,17 @@
-#include <test.h>
-#include <syscalls.h>
+#include <unistd.h>
+#include <string.h>
 
 int main(int argc, char **argv)
 {
     if (argc < 2) {
-        print("rm: missing operand\n");
+        write(1, "rm: missing operand\n", 20);
         return 1;
     }
 
-    if (sys_unlink(argv[1]) < 0) {
-        print("rm: cannot remove '");
-        print(argv[1]);
-        print("'\n");
+    if (unlink(argv[1]) < 0) {
+        write(1, "rm: cannot remove '", 19);
+        write(1, argv[1], strlen(argv[1]));
+        write(1, "'\n", 2);
         return 1;
     }
     return 0;

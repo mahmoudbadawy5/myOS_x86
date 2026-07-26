@@ -1,5 +1,5 @@
-#include <test.h>
-#include <syscalls.h>
+#include <unistd.h>
+#include <string.h>
 
 typedef struct {
     unsigned int pid;
@@ -12,14 +12,14 @@ int main(int argc, char **argv)
 {
     (void)argc; (void)argv;
     ps_entry_t entries[10];
-    int count = sys_ps(entries, 10);
+    int count = ps(entries, 10);
 
     if (count < 0) {
-        print("ps: failed\n");
+        write(1, "ps: failed\n", 11);
         return 1;
     }
 
-    print("  PID NAME             STATE  PPID\n");
+    write(1, "  PID NAME             STATE  PPID\n", 34);
     for (int i = 0; i < count; i++) {
         const char *state_str;
         switch (entries[i].state) {
@@ -46,24 +46,24 @@ int main(int argc, char **argv)
         pid_buf[pi] = '\0';
 
         /* Pad PID to 4 chars */
-        for (int j = pi; j < 4; j++) print(" ");
-        print(pid_buf);
-        print(" ");
+        for (int j = pi; j < 4; j++) write(1, " ", 1);
+        write(1, pid_buf, strlen(pid_buf));
+        write(1, " ", 1);
 
         /* Name */
-        print(entries[i].name);
+        write(1, entries[i].name, strlen(entries[i].name));
         /* Pad name to 18 chars */
         int nlen = 0;
         while (entries[i].name[nlen] && nlen < 18) nlen++;
-        for (int j = nlen; j < 18; j++) print(" ");
-        print(" ");
+        for (int j = nlen; j < 18; j++) write(1, " ", 1);
+        write(1, " ", 1);
 
         /* State */
-        print(state_str);
+        write(1, state_str, strlen(state_str));
         int slen = 0;
         while (state_str[slen]) slen++;
-        for (int j = slen; j < 10; j++) print(" ");
-        print(" ");
+        for (int j = slen; j < 10; j++) write(1, " ", 1);
+        write(1, " ", 1);
 
         /* Parent PID */
         unsigned int ppid = entries[i].parent_id;
@@ -76,8 +76,8 @@ int main(int argc, char **argv)
             while (ti) { ppid_buf[ppi++] = tmp[--ti]; }
         }
         ppid_buf[ppi] = '\0';
-        print(ppid_buf);
-        print("\n");
+        write(1, ppid_buf, strlen(ppid_buf));
+        write(1, "\n", 1);
     }
 
     return 0;

@@ -1,5 +1,5 @@
-#include <test.h>
-#include <syscalls.h>
+#include <unistd.h>
+#include <string.h>
 
 #define LINE_MAX 256
 #define MAX_ARGS 16
@@ -25,7 +25,7 @@ int read_line(char *buf, int max)
     char c;
     while (i < max - 1)
     {
-        if (read(&c, 1))
+        if (read(0, &c, 1))
         {
             if (c == '\n' || c == '\r')
             {
@@ -140,24 +140,24 @@ int run_stage(stage_t *st, int pipe_in, int pipe_out, int extra_fd)
 
         /* Close non-adjacent pipe end inherited from parent */
         if (extra_fd >= 0)
-            sys_close(extra_fd);
+            close(extra_fd);
 
         /* Apply pipe redirections first */
         if (pipe_in >= 0) {
             dup2(pipe_in, 0);
-            sys_close(pipe_in);
+            close(pipe_in);
         }
         if (pipe_out >= 0) {
             dup2(pipe_out, 1);
-            sys_close(pipe_out);
+            close(pipe_out);
         }
 
         /* Apply file redirections (override pipe if both specified) */
         if (st->in_file) {
-            int fd = sys_open(st->in_file, "r");
+            int fd = open(st->in_file, "r");
             if (fd >= 0) {
                 dup2(fd, 0);
-                sys_close(fd);
+                close(fd);
             } else {
                 print("cannot open ");
                 print(st->in_file);
@@ -166,10 +166,10 @@ int run_stage(stage_t *st, int pipe_in, int pipe_out, int extra_fd)
             }
         }
         if (st->out_file) {
-            int fd = sys_open(st->out_file, st->append ? "a" : "w");
+            int fd = open(st->out_file, st->append ? "a" : "w");
             if (fd >= 0) {
                 dup2(fd, 1);
-                sys_close(fd);
+                close(fd);
             } else {
                 print("cannot open ");
                 print(st->out_file);
@@ -217,9 +217,9 @@ void run_command(int argc, char **args)
         print("\x1b\x0F\x0C");
     } else if (strcmp(args[0], "cd") == 0) {
         if (argc < 2) {
-            sys_chdir("/");
+            chdir("/");
         } else {
-            if (sys_chdir(args[1]) != 0) {
+            if (chdir(args[1]) != 0) {
                 print("cd: ");
                 print(args[1]);
                 print(": no such directory\n");
@@ -227,7 +227,7 @@ void run_command(int argc, char **args)
         }
     } else if (strcmp(args[0], "pwd") == 0) {
         char cwd[256];
-        if (sys_getcwd(cwd, sizeof(cwd)) == 0)
+        if (getcwd(cwd, sizeof(cwd)) == 0)
             print(cwd);
         print("\n");
     } else {
@@ -295,9 +295,9 @@ int main(void)
                     int pid = run_stage(st, prev_fd, next_fd, extra_fd);
 
                     /* Close pipe ends in parent */
-                    if (prev_fd >= 0) sys_close(prev_fd);
+                    if (prev_fd >= 0) close(prev_fd);
                     if (next_fd >= 0) {
-                        sys_close(next_fd);
+                        close(next_fd);
                         prev_fd = pipe_fds[0]; /* read end for next stage */
                     }
 

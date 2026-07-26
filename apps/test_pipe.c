@@ -1,4 +1,4 @@
-#include <test.h>
+#include <unistd.h>
 #include <syscalls.h>
 
 /* Test basic pipe communication: parent writes, child reads */
@@ -15,10 +15,10 @@ void test_basic_pipe(void)
     int pid = fork();
     if (pid == 0) {
         /* Child: read from pipe */
-        sys_close(fds[1]);
+        close(fds[1]);
         char buf[32];
-        int n = sys_read_fd(fds[0], buf, sizeof(buf) - 1);
-        sys_close(fds[0]);
+        int n = read(fds[0], buf, sizeof(buf) - 1);
+        close(fds[0]);
         if (n > 0) {
             buf[n] = '\0';
             print("  child read: ");
@@ -31,10 +31,10 @@ void test_basic_pipe(void)
     }
 
     /* Parent: write to pipe */
-    sys_close(fds[0]);
+    close(fds[0]);
     const char *msg = "hello from pipe";
-    sys_write_fd(fds[1], msg, 15);
-    sys_close(fds[1]);
+    write(fds[1], msg, 15);
+    close(fds[1]);
     wait();
     print("  PASS\n");
 }
@@ -50,13 +50,13 @@ void test_eof(void)
     int pid = fork();
     if (pid == 0) {
         /* Child: read until EOF */
-        sys_close(fds[1]);
+        close(fds[1]);
         char buf[32];
         int total = 0;
         int n;
-        while ((n = sys_read_fd(fds[0], buf + total, sizeof(buf) - 1 - total)) > 0)
+        while ((n = read(fds[0], buf + total, sizeof(buf) - 1 - total)) > 0)
             total += n;
-        sys_close(fds[0]);
+        close(fds[0]);
         buf[total] = '\0';
         print("  child got: ");
         print(buf);
@@ -65,9 +65,9 @@ void test_eof(void)
     }
 
     /* Parent: write then close */
-    sys_close(fds[0]);
-    sys_write_fd(fds[1], "data", 4);
-    sys_close(fds[1]);
+    close(fds[0]);
+    write(fds[1], "data", 4);
+    close(fds[1]);
     wait();
     print("  PASS\n");
 }

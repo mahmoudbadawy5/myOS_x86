@@ -1,4 +1,4 @@
-#include <test.h>
+#include <unistd.h>
 
 int main(void)
 {
@@ -13,10 +13,10 @@ int main(void)
     int pid = fork();
     if (pid == 0) {
         /* Child: close write end, read from pipe */
-        sys_close(fds[1]);
+        close(fds[1]);
         char buf[32];
-        int n = sys_read_fd(fds[0], buf, sizeof(buf) - 1);
-        sys_close(fds[0]);
+        int n = read(fds[0], buf, sizeof(buf) - 1);
+        close(fds[0]);
         if (n > 0) {
             buf[n] = '\0';
             print(" child read: ");
@@ -27,9 +27,9 @@ int main(void)
     }
 
     /* Parent: close read end, write to pipe */
-    sys_close(fds[0]);
-    sys_write_fd(fds[1], "fork pipe test", 14);
-    sys_close(fds[1]);
+    close(fds[0]);
+    write(fds[1], "fork pipe test", 14);
+    close(fds[1]);
     wait();
 
     print("  PASS (no crash)\n");
@@ -42,14 +42,14 @@ int main(void)
     int pid2 = fork();
     if (pid2 == 0) {
         /* Child: write then close */
-        sys_close(fds2[0]);
-        sys_write_fd(fds2[1], "child msg", 9);
-        sys_close(fds2[1]);
+        close(fds2[0]);
+        write(fds2[1], "child msg", 9);
+        close(fds2[1]);
         exit(0);
     }
     /* Parent: wait for child to write, then read */
-    sys_close(fds2[0]);
-    sys_close(fds2[1]);
+    close(fds2[0]);
+    close(fds2[1]);
     wait();
     print("  PASS\n");
 

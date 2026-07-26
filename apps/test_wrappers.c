@@ -1,4 +1,4 @@
-#include <test.h>
+#include <unistd.h>
 
 int main(void)
 {
@@ -51,7 +51,7 @@ int main(void)
         buf[n] = '\0';
         print(buf);
         print(")\n");
-        sys_close(d);
+        close(d);
     } else {
         print(" FAIL\n");
     }
@@ -61,7 +61,7 @@ int main(void)
     int d2 = dup2(0, 20);
     if (d2 == 20) {
         print(" OK\n");
-        sys_close(20);
+        close(20);
     } else {
         print(" FAIL\n");
     }
@@ -97,8 +97,8 @@ int main(void)
         buf[n] = '\0';
         print(buf);
         print(")\n");
-        sys_close(fds[0]);
-        sys_close(fds[1]);
+        close(fds[0]);
+        close(fds[1]);
     } else {
         print(" FAIL\n");
     }

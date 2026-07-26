@@ -1,4 +1,4 @@
-#include <test.h>
+#include <unistd.h>
 #include <syscalls.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -48,7 +48,7 @@ int main(int argc, char **argv)
         if (!data) { print("hexdump: out of memory\n"); return 1; }
         char buf[512];
         int n;
-        while ((n = sys_read_fd(0, buf, sizeof(buf))) > 0) {
+        while ((n = read(0, buf, sizeof(buf))) > 0) {
             while (total + n > cap) {
                 cap *= 2;
                 char *tmp = realloc(data, cap);

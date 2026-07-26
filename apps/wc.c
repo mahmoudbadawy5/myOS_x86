@@ -1,4 +1,4 @@
-#include <test.h>
+#include <unistd.h>
 #include <syscalls.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -11,7 +11,7 @@ static int read_all_stdin(char **out)
     int total = 0;
     char tmp[512];
     int n;
-    while ((n = sys_read_fd(0, tmp, sizeof(tmp))) > 0) {
+    while ((n = read(0, tmp, sizeof(tmp))) > 0) {
         while (total + n > cap) {
             cap *= 2;
             char *new_buf = realloc(buf, cap);
@@ -100,6 +100,6 @@ int main(int argc, char **argv)
     buf[pos++] = '\n';
     buf[pos] = '\0';
 
-    sys_write(buf, pos);
+    write(1, buf, pos);
     return 0;
 }
