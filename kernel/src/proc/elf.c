@@ -357,7 +357,8 @@ int load_elf(pcb_t* proc, const char* path) {
 							Elf32_Rel *ljmp = NULL;
 							uint32_t ljmpsz = 0;
 							const char *lstr = NULL;
-							for (uint32_t k = 0; ld[k].d_tag != DT_NULL; k++) {
+							uint32_t dyn_count = lp->p_filesz / sizeof(Elf32_Dyn);
+							for (uint32_t k = 0; k < dyn_count && ld[k].d_tag != DT_NULL; k++) {
 								switch (ld[k].d_tag) {
 									case DT_SYMTAB: lsym = (Elf32_Sym *)(ld[k].d_un.d_ptr + loaded_libs[li].base); break;
 									case DT_STRTAB: lstr = (const char *)(ld[k].d_un.d_ptr + loaded_libs[li].base); break;
@@ -370,8 +371,8 @@ int load_elf(pcb_t* proc, const char* path) {
 								for (uint32_t k = 0; k < cnt; k++) {
 									if (ELF32_R_TYPE(ljmp[k].r_info) != R_386_JMP_SLOT) continue;
 									uint32_t si = ELF32_R_SYM(ljmp[k].r_info);
-									uint32_t *loc = (uint32_t *)(ljmp[k].r_offset + loaded_libs[li].base);
 									if (si == 0) continue;
+									uint32_t *loc = (uint32_t *)(ljmp[k].r_offset + loaded_libs[li].base);
 									const char *sname = lstr + lsym[si].st_name;
 									for (int m = 0; m < global_sym_count; m++) {
 										if (strcmp(global_syms[m].name, sname) == 0) {
@@ -382,6 +383,7 @@ int load_elf(pcb_t* proc, const char* path) {
 								}
 							}
 							free(ld);
+							free(lp);
 							break;
 						}
 						free(lp);

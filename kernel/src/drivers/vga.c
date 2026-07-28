@@ -49,8 +49,10 @@ void vga_save_font(void)
     outportb(0x3CE, 0x06); outportb(0x3CF, 0x0E); /* Map text window to 0xB8000 */
 
     font_saved = 1;
+}
 
-    /* Save cursor state before entering graphics mode */
+void vga_save_cursor_state(void)
+{
     saved_csr_x = csr_x;
     saved_csr_y = csr_y;
     saved_attrib = attrib;

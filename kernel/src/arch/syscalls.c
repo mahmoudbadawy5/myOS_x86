@@ -1468,8 +1468,18 @@ int32_t syscall_fb_set_mode(struct regs *regs)
     uint32_t height = regs->ecx;
     uint32_t bpp = regs->edx;
 
+    /* Validate dimensions and bpp */
+    if (width == 0 || height == 0)
+        return -1;
+    if (width > 4096 || height > 4096)
+        return -1;
+    if (bpp != 8 && bpp != 15 && bpp != 16 && bpp != 24 && bpp != 32)
+        return -1;
+
     printf("[FB] set_mode %dx%d bpp=%d\n", width, height, bpp);
     int ret = bga_set_mode((uint16_t)width, (uint16_t)height, (uint16_t)bpp);
+    if (ret == 0)
+        current_process->has_framebuffer = 1;
     return ret;
 }
 
@@ -1484,7 +1494,9 @@ int32_t syscall_fb_map(struct regs *regs)
     if (lfb_phys == 0)
         return -1;
 
-    uint32_t fb_size = 4 * 1024 * 1024;
+    uint32_t fb_size = bga_get_pitch() * bga_get_height();
+    if (fb_size == 0)
+        return -1;
     uint32_t pages = (fb_size + BLOCK_SIZE - 1) / BLOCK_SIZE;
 
     for (uint32_t i = 0; i < pages; i++) {
@@ -1493,7 +1505,6 @@ int32_t syscall_fb_map(struct regs *regs)
         map_address_user(virt, phys);
     }
 
-    current_process->has_framebuffer = 1;
     return (int32_t)FB_MAP_VADDR;
 }
 

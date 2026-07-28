@@ -6,6 +6,7 @@ Graphics apps callable from terminal. Ctrl+C kills them and restores the old ter
 ## Architecture
 
 ### Memory Layout
+
 ```
 0x00000000 ┌──────────────────────┐
            │ Low memory (< 1MB)   │
@@ -18,7 +19,7 @@ Graphics apps callable from terminal. Ctrl+C kills them and restores the old ter
 0xFD000000 ├──────────────────────┤
            │ VBE FRAMEBUFFER      │ ← Separate physical region
            │ (640×480×4 = 1.2MB) │
-0xFD001300 └──────────────────────┘
+0xFD12C000 └──────────────────────┘
 ```
 
 **Key insight**: VGA text memory (`0xB8000`) and VBE framebuffer (`0xFD000000`) are completely separate physical regions. The text buffer is never modified during graphics mode, so restoring VGA text mode makes old terminal text reappear automatically.
@@ -70,6 +71,7 @@ A small ASM stub at physical `0x8000` (below 1MB, identity-mapped in kernel page
 9. C caller restores process page directory, returns
 
 **Parameter block** (`0x8100`):
+
 | Offset | Size | Content |
 |--------|------|---------|
 | 0x8100 | 2 | AX (VBE function, e.g., `0x4F02`) |
@@ -113,6 +115,7 @@ if (current_process->has_framebuffer)
 ```
 
 **Files**:
+
 | File | Change |
 |------|--------|
 | `kernel/src/arch/syscalls.c` | Add 3 handlers, update `syscall_exit()` |
@@ -184,6 +187,7 @@ All call `gfx_init()` at start, `gfx_shutdown()` at end. Ctrl+C → SIGINT → `
 7. Build, test, commit
 
 ### New Files Summary
+
 | File | Purpose |
 |------|---------|
 | `kernel/src/arch/real_mode_stub.asm` | Real-mode callback trampoline |

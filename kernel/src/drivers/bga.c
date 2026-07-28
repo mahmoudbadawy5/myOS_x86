@@ -58,7 +58,7 @@ static int bga_detect(void)
 /* PCI config read (simplified: only for QEMU VGA at bus 0 dev 2 func 0) */
 static uint32_t pci_read32(uint8_t bus, uint8_t dev, uint8_t func, uint8_t offset)
 {
-    uint32_t addr = (1 << 31)                   /* enable bit */
+    uint32_t addr = (1U << 31)                  /* enable bit */
                   | ((uint32_t)bus << 16)
                   | ((uint32_t)(dev & 0x1F) << 11)
                   | ((uint32_t)(func & 0x07) << 8)
@@ -89,6 +89,7 @@ static void bga_probe_lfb(void)
 }
 
 extern void vga_save_font(void);
+extern void vga_save_cursor_state(void);
 
 int bga_set_mode(uint16_t width, uint16_t height, uint16_t bpp)
 {
@@ -99,6 +100,9 @@ int bga_set_mode(uint16_t width, uint16_t height, uint16_t bpp)
     extern int font_saved;
     if (!font_saved)
         vga_save_font();
+
+    /* Save cursor state on every mode switch */
+    vga_save_cursor_state();
 
     bga_probe_lfb();
 

@@ -10,8 +10,10 @@ int gfx_init(framebuffer_t *fb, int width, int height, int bpp)
         return -1;
 
     void *addr = fb_map();
-    if (!addr)
+    if (!addr) {
+        fb_restore_text();
         return -1;
+    }
 
     fb->addr = addr;
     fb->width = width;
@@ -36,7 +38,10 @@ void gfx_put_pixel(framebuffer_t *fb, int x, int y, unsigned int color)
         p[2] = (color >> 16) & 0xFF;
     } else if (fb->bpp == 16) {
         unsigned short *p = (unsigned short *)((unsigned char *)fb->addr + off);
-        *p = (unsigned short)color;
+        unsigned short r5 = ((color >> 16) & 0xFF) >> 3;
+        unsigned short g6 = ((color >> 8)  & 0xFF) >> 2;
+        unsigned short b5 = ((color >> 0)  & 0xFF) >> 3;
+        *p = (r5 << 11) | (g6 << 5) | b5;
     }
 }
 
@@ -61,6 +66,8 @@ void gfx_vline(framebuffer_t *fb, int x, int y0, int y1, unsigned int color)
 
 void gfx_rect(framebuffer_t *fb, int x, int y, int w, int h, unsigned int color)
 {
+    if (w <= 0 || h <= 0)
+        return;
     gfx_hline(fb, x, x + w - 1, y, color);
     gfx_hline(fb, x, x + w - 1, y + h - 1, color);
     gfx_vline(fb, x, y, y + h - 1, color);

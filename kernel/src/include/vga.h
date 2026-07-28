@@ -18,6 +18,14 @@ void settextcolor(unsigned char forecolor, unsigned char backcolor);
  * untouched during graphics mode, so old content reappears. */
 void vga_restore_text_mode(void);
 
+/* Save VGA font data from plane 2 before BGA mode switch destroys it.
+ * Only performs the save once (guarded by font_saved flag). */
+void vga_save_font(void);
+
+/* Save cursor position and attribute before entering graphics mode.
+ * Called on every bga_set_mode() so the state is always current. */
+void vga_save_cursor_state(void);
+
 extern fs_node_t *stdout_node;
 
 #endif
