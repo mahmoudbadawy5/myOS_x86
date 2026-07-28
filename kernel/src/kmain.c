@@ -295,15 +295,15 @@ void kmain(unsigned long magic, multiboot_info_t *mbd)
     keyboard_install();
     printf("\x1b\x02OK\x1b\x0F]\t\n");
 
-    printf("Initializing Mouse:\t[");
-    mouse_install();
-    printf("\x1b\x02OK\x1b\x0F]\t\n");
-
     printf("Initializing Syscalls:\t[");
     init_syscalls();
     printf("\x1b\x02OK\x1b\x0F]\t\n");
 
     init_initrd(initrd_location + KERNEL_VIRTUAL_BASE);
+
+    printf("Initializing Mouse:\t[");
+    mouse_install();
+    printf("\x1b\x02OK\x1b\x0F]\t\n");
 
     printf("Initializing ATA:\t\t[");
     ata_init();
