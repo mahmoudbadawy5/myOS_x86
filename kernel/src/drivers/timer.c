@@ -10,6 +10,7 @@ int ticks = 0;
 void timer_handler(struct regs *r)
 {
     ticks++;
+    sleep_check_wakeup(ticks);
     outportb(0x20, 0x20);
     schedule(r);
 }

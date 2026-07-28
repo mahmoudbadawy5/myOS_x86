@@ -23,3 +23,15 @@ void outportw (unsigned short _port, unsigned short _data)
 {
     __asm__ __volatile__ ("outw %1, %0" : : "dN" (_port), "a" (_data));
 }
+
+unsigned int inportl (unsigned short _port)
+{
+    unsigned int rv;
+    __asm__ __volatile__ ("inl %1, %0" : "=a" (rv) : "dN" (_port));
+    return rv;
+}
+
+void outportl (unsigned short _port, unsigned int _data)
+{
+    __asm__ __volatile__ ("outl %1, %0" : : "dN" (_port), "a" (_data));
+}

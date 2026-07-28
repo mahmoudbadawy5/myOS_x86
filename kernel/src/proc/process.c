@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <fs/vfs.h>
 #include <fs/pipe.h>
+#include <vga.h>
 #include <fs/initrd.h>
 #include <arch.h>
 #include <isr.h>
@@ -256,6 +257,7 @@ void create_process(const char *app_path, uint32_t parent_pid, int argc, const c
     pcb->state = PROCESS_STATE_BLOCKED;
     pcb->parent_id = parent_pid;
     pcb->num_children = 0;
+    pcb->has_framebuffer = 0;
     init_process_signals(pcb, NULL);
     pcb->files_open[0] = malloc(sizeof(FILE));
     pcb->files_open[0]->file = stdin_node;
@@ -339,6 +341,8 @@ void schedule(struct regs *r)
 
             /* SIGKILL is unblockable — always kills */
             if (pending & SIG_BIT(SIGKILL)) {
+                if (cur->has_framebuffer)
+                    vga_restore_text_mode();
                 cur->state = PROCESS_STATE_TERMINATED;
                 cur->sig.pending = 0;
                 unblock_parent(cur->pid, 1);
@@ -392,6 +396,8 @@ void schedule(struct regs *r)
                             continue;
                         }
                         /* Default: terminate */
+                        if (cur->has_framebuffer)
+                            vga_restore_text_mode();
                         cur->sig.pending &= ~SIG_BIT(sig);
                         cur->state = PROCESS_STATE_TERMINATED;
                         unblock_parent(cur->pid, 1);
@@ -777,5 +783,38 @@ void unblock_parent(uint32_t child_pid, int cleanup)
         parent->state = PROCESS_STATE_READY;
         if (cleanup && child != current_process)
             process_cleanup_child(child);
+    }
+}
+
+/* ---- Sleep queue ---- */
+static pcb_t *sleep_queue = NULL; /* sorted by wake_tick ascending */
+
+void sleep_enqueue(pcb_t *proc, uint32_t wake_tick)
+{
+    proc->wake_tick = wake_tick;
+    proc->sleep_next = NULL;
+
+    /* Insert sorted by wake_tick */
+    if (!sleep_queue || wake_tick < sleep_queue->wake_tick) {
+        proc->sleep_next = sleep_queue;
+        sleep_queue = proc;
+        return;
+    }
+
+    pcb_t *cur = sleep_queue;
+    while (cur->sleep_next && cur->sleep_next->wake_tick <= wake_tick)
+        cur = cur->sleep_next;
+    proc->sleep_next = cur->sleep_next;
+    cur->sleep_next = proc;
+}
+
+void sleep_check_wakeup(uint32_t current_ticks)
+{
+    while (sleep_queue && current_ticks >= sleep_queue->wake_tick) {
+        pcb_t *proc = sleep_queue;
+        sleep_queue = proc->sleep_next;
+        proc->sleep_next = NULL;
+        if (proc->state == PROCESS_STATE_BLOCKED)
+            proc->state = PROCESS_STATE_READY;
     }
 }

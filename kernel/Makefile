@@ -1,5 +1,5 @@
 c_src	:= $(shell find src -name "*.c")
-asm_src	:= $(shell find src -name "*.asm") 
+asm_src	:= $(shell find src -name "*.asm")
 c_obj	=  $(patsubst src/%, build/%, $(c_src:.c=.o))
 asm_obj	=  $(patsubst src/%, build/%, $(asm_src:.asm=.o))
 all_obj = $(c_obj) $(asm_obj) build/arch/isr.o build/arch/irq.o build/arch/isr_asm.o build/arch/irq_asm.o

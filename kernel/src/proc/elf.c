@@ -162,6 +162,11 @@ int load_elf(pcb_t* proc, const char* path) {
 				sym_entry_t global_syms[256];
 				int global_sym_count = 0;
 
+				/* Track loaded libraries for cross-lib PLT resolution */
+				typedef struct { char path[256]; uint32_t base; } loaded_lib_t;
+				loaded_lib_t loaded_libs[16];
+				int loaded_lib_count = 0;
+
 				uint32_t next_lib_base = SHLIB_BASE;
 
 				for (int n = 0; n < needed_count; n++) {
@@ -183,6 +188,12 @@ int load_elf(pcb_t* proc, const char* path) {
 					if (lib_top == 0) {
 						ERROR("load_elf: failed to load shared lib: %s\n", lib_name);
 						continue;
+					}
+					if (loaded_lib_count < 16) {
+						int li = loaded_lib_count++;
+						int j; for (j = 0; lib_path[j]; j++) loaded_libs[li].path[j] = lib_path[j];
+						loaded_libs[li].path[j] = '\0';
+						loaded_libs[li].base = lib_base;
 					}
 					next_lib_base = (lib_top + 0xFFF) & ~0xFFF; /* Align to page boundary */
 
@@ -325,6 +336,59 @@ int load_elf(pcb_t* proc, const char* path) {
 							free(lib_hdr);
 						}
 					}
+				}
+
+				/* Resolve cross-library PLT entries (e.g. libgraphics calling libc funcs) */
+				for (int li = 0; li < loaded_lib_count; li++) {
+					fs_node_t *ln = get_node(loaded_libs[li].path, root_dir);
+					if (!ln) continue;
+					Elf32_Ehdr *lh = malloc(sizeof(Elf32_Ehdr));
+					seek_fs(ln, 0, SEEK_START);
+					read_fs(ln, sizeof(Elf32_Ehdr), 1, (uint8_t *)lh);
+					for (int pi = 0; pi < lh->e_phnum; pi++) {
+						Elf32_Phdr *lp = malloc(sizeof(Elf32_Phdr));
+						seek_fs(ln, lh->e_phoff + (pi * lh->e_phentsize), SEEK_START);
+						read_fs(ln, sizeof(Elf32_Phdr), 1, (uint8_t *)lp);
+						if (lp->p_type == PT_DYNAMIC) {
+							Elf32_Dyn *ld = malloc(lp->p_filesz);
+							seek_fs(ln, lp->p_offset, SEEK_START);
+							read_fs(ln, lp->p_filesz, 1, (uint8_t *)ld);
+							Elf32_Sym *lsym = NULL;
+							Elf32_Rel *ljmp = NULL;
+							uint32_t ljmpsz = 0;
+							const char *lstr = NULL;
+							uint32_t dyn_count = lp->p_filesz / sizeof(Elf32_Dyn);
+							for (uint32_t k = 0; k < dyn_count && ld[k].d_tag != DT_NULL; k++) {
+								switch (ld[k].d_tag) {
+									case DT_SYMTAB: lsym = (Elf32_Sym *)(ld[k].d_un.d_ptr + loaded_libs[li].base); break;
+									case DT_STRTAB: lstr = (const char *)(ld[k].d_un.d_ptr + loaded_libs[li].base); break;
+									case DT_JMPREL: ljmp = (Elf32_Rel *)(ld[k].d_un.d_val + loaded_libs[li].base); break;
+									case DT_PLTRELSZ: ljmpsz = ld[k].d_un.d_val; break;
+								}
+							}
+							if (ljmp && ljmpsz && lsym && lstr) {
+								uint32_t cnt = ljmpsz / sizeof(Elf32_Rel);
+								for (uint32_t k = 0; k < cnt; k++) {
+									if (ELF32_R_TYPE(ljmp[k].r_info) != R_386_JMP_SLOT) continue;
+									uint32_t si = ELF32_R_SYM(ljmp[k].r_info);
+									if (si == 0) continue;
+									uint32_t *loc = (uint32_t *)(ljmp[k].r_offset + loaded_libs[li].base);
+									const char *sname = lstr + lsym[si].st_name;
+									for (int m = 0; m < global_sym_count; m++) {
+										if (strcmp(global_syms[m].name, sname) == 0) {
+											*loc = global_syms[m].addr;
+											break;
+										}
+									}
+								}
+							}
+							free(ld);
+							free(lp);
+							break;
+						}
+						free(lp);
+					}
+					free(lh);
 				}
 
 				/* Resolve relocations in the app using the global symbol table */
@@ -580,6 +644,7 @@ uint32_t load_shared_library(pcb_t *proc, const char *path, uint32_t load_addr)
 					uint32_t *loc = (uint32_t *)(ljmprel[j].r_offset + load_addr);
 
 					if (type == R_386_JMP_SLOT && sym_idx != 0 && sym_idx < sym_count) {
+						if (lsymtab[sym_idx].st_shndx == SHN_UNDEF) continue;
 						uint32_t sym_val = lsymtab[sym_idx].st_value + load_addr;
 						*loc = sym_val;
 					}

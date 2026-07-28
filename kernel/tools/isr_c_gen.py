@@ -3,6 +3,7 @@ print("#include <idt.h>")
 print("#include <stdio.h>")
 print("#include <mem/virt_mem.h>")
 print("#include <proc/process.h>")
+print("#include <vga.h>")
 print("""
 /* These are function prototypes for all of the exception
 *  handlers: The first 32 entries in the IDT are reserved
@@ -136,9 +137,13 @@ void fault_handler(struct regs *r)
             printf("Killing process %d (%s) due to %s\\n",
                    current_process->pid, current_process->proc_name,
                    exception_messages[r->int_no]);
+            if (current_process->has_framebuffer) {
+                vga_restore_text_mode();
+                current_process->has_framebuffer = 0;
+            }
             kill_children_of(current_process->pid);
             current_process->state = PROCESS_STATE_TERMINATED;
-            unblock_parent(current_process->pid);
+            unblock_parent(current_process->pid, 1);
             current_process = NULL;
             schedule(r);
             for (;;);

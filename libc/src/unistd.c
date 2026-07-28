@@ -57,3 +57,11 @@ void *sbrk(unsigned int inc) { return sys_sbrk(inc); }
 /* Kernel test syscalls */
 unsigned int test_syscall0(unsigned int val) { return sys_test0(val); }
 unsigned int test_syscall1(unsigned int val) { return sys_test1(val); }
+
+/* Graphics */
+int fb_set_mode(int w, int h, int bpp) { return sys_fb_set_mode(w, h, bpp); }
+void *fb_map(void) { return sys_fb_map(); }
+int fb_restore_text(void) { return sys_fb_restore_text(); }
+
+/* Sleep */
+unsigned int sleep(unsigned int seconds) { return sys_sleep(seconds); }

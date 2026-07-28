@@ -142,6 +142,12 @@ void keyboard_handler(struct regs *r)
 {
     unsigned char scancode;
 
+    /* Skip if this byte is from the mouse (bit 5 of status = auxiliary device) */
+    if (inportb(0x64) & 0x20) {
+        outportb(0x20, 0x20);
+        return;
+    }
+
     scancode = inportb(0x60);
 
     if (scancode & 0x80)

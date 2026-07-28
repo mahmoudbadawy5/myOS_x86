@@ -13,6 +13,7 @@ Bare-metal educational OS for i686, cross-compiled with i686-elf-gcc.
 ### Testing
 - **Do NOT run QEMU from the agent.** The user tests manually.
 - **Do NOT commit until the user has tested and confirmed it works.**
+- **Always run `i686-elf-nm kernel/kernel.bin | sort` after recompiling** to get correct addresses for crash analysis — addresses change every build due to code layout changes.
 - Apps run from FAT12 (`/mnt/`), not initrd (read-only)
 - User space apps are in `apps/`, built as ELF dynamic executables with libc.so
 - Test apps: `test_signal`, `test_signal_handler`, `test_fork`, `test_pipe`, etc.
@@ -61,3 +62,4 @@ Bare-metal educational OS for i686, cross-compiled with i686-elf-gcc.
 
 ### Branch
 - `feat-signals`: Phase 1+2+3+4+5+6+7 signal work — COMPLETE
+- `feat-graphics`: Phase 7 VBE framebuffer graphics — IN PROGRESS

@@ -8,6 +8,7 @@
 #include <irq.h>
 #include <timer.h>
 #include <kbd.h>
+#include <mouse.h>
 #include <stdio.h>
 #include <multiboot.h>
 #include <mem/phys_mem.h>
@@ -20,6 +21,7 @@
 #include <arch/syscalls.h>
 #include <proc/process.h>
 #include <tss.h>
+#include <arch/bga.h>
 
 extern unsigned int code, end;
 unsigned int kstart = (unsigned int)&code - KERNEL_VIRTUAL_BASE;
@@ -298,6 +300,10 @@ void kmain(unsigned long magic, multiboot_info_t *mbd)
     printf("\x1b\x02OK\x1b\x0F]\t\n");
 
     init_initrd(initrd_location + KERNEL_VIRTUAL_BASE);
+
+    printf("Initializing Mouse:\t[");
+    mouse_install();
+    printf("\x1b\x02OK\x1b\x0F]\t\n");
 
     printf("Initializing ATA:\t\t[");
     ata_init();

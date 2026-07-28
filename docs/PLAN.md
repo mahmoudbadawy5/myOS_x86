@@ -8,6 +8,7 @@
 | Phase 4: Ring 3 Process Hardening | DONE | [RING3_INFRA.md](RING3_INFRA.md) |
 | Phase 5: Dynamic Library Support | DONE | [DYNAMIC_LIBS.md](DYNAMIC_LIBS.md) |
 | Phase 6: Job Control & Signals | DONE | [JOB_CONTROL.md](JOB_CONTROL.md) |
+| Phase 7: VBE Framebuffer Graphics | PLANNED | [GRAPHICS.md](GRAPHICS.md) |
 
 ---
 
@@ -526,3 +527,34 @@ Wire together signals, process groups, and shell job tracking to support `Ctrl+C
 5. Shell job control (parse `&`, job list, builtins)
 6. SIGCHLD & non-blocking wait (waitpid with WNOHANG)
 7. Signal masks (sigprocmask, auto-block during handler)
+
+---
+
+## Phase 7: VBE Framebuffer Graphics (PLANNED)
+
+See [GRAPHICS.md](GRAPHICS.md) for full implementation plan.
+
+### Summary
+VBE framebuffer graphics with real-mode BIOS callback for mode switching. Boot in VGA text mode, switch to VBE at runtime via `fb_set_mode()` syscall, restore VGA text mode on process exit. Old terminal text preserved automatically (VGA text memory at `0xB8000` untouched during graphics mode).
+
+### New syscalls (3)
+- `fb_set_mode(width, height, bpp)` (#33) — switch to VBE mode via BIOS callback
+- `fb_map()` (#34) — map framebuffer into user space
+- `fb_restore_text()` (#35) — restore VGA text mode
+
+### Key changes
+- Identity mapping for kernel page directory (entry 0 shares kernel page table)
+- Real-mode callback trampoline at physical `0x8000` (below 1MB)
+- VGA text mode restore via I/O port register programming (no BIOS needed)
+- PCB gains `has_framebuffer` flag; auto-restore on process exit
+- New `libgraphics` shared library with drawing primitives
+- 3 test apps: colors, shapes, interactive
+
+### Implementation order
+1. Identity mapping fix in `init_paging()`
+2. Real-mode stub ASM + VGA text mode restore
+3. Syscalls 33-35 + PCB field
+4. libc stubs
+5. libgraphics shared library
+6. Test apps + Makefile updates
+7. Build, test, commit
