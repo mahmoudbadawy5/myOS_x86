@@ -73,4 +73,9 @@ void *sbrk(unsigned int increment);
 unsigned int test_syscall0(unsigned int val);
 unsigned int test_syscall1(unsigned int val);
 
+/* Graphics */
+int fb_set_mode(int w, int h, int bpp);
+void *fb_map(void);
+int fb_restore_text(void);
+
 #endif

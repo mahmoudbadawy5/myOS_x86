@@ -20,6 +20,7 @@
 #include <arch/syscalls.h>
 #include <proc/process.h>
 #include <tss.h>
+#include <arch/bga.h>
 
 extern unsigned int code, end;
 unsigned int kstart = (unsigned int)&code - KERNEL_VIRTUAL_BASE;

@@ -9,7 +9,7 @@ kernel.bin: $(kernel_src)
 apps/%.bin: apps/%.c
 	make -C apps $(patsubst apps/%, %, $@)
 
-initrd: tools/create_initrd.py $(apps) libc/build/libc.so libmath/build/libmath.so
+initrd: tools/create_initrd.py $(apps) libc/build/libc.so libmath/build/libmath.so libgraphics/build/libgraphics.so
 	@mkdir -p initrd/bin initrd/lib
 	@rm -f initrd/*.bin initrd/libc.so
 	@rm -f initrd/bin/*.bin
@@ -17,6 +17,7 @@ initrd: tools/create_initrd.py $(apps) libc/build/libc.so libmath/build/libmath.
 	@cp apps/*.bin initrd/bin/
 	@cp libc/build/libc.so initrd/lib/
 	@cp libmath/build/libmath.so initrd/lib/
+	@cp libgraphics/build/libgraphics.so initrd/lib/
 	@cp apps/*.txt initrd/ 2>/dev/null || true
 	@cp -r apps/test_folder initrd/ 2>/dev/null || true
 	@python tools/create_initrd.py initrd initrd.img
@@ -35,6 +36,7 @@ clean:
 	make -C kernel clean
 	make -C libc clean
 	make -C libmath clean
+	make -C libgraphics clean
 	make -C apps clean
 	rm -f initrd/bin/*.bin
 	rm -f initrd/lib/*.so

@@ -2,12 +2,12 @@ CC=i686-elf-gcc
 LD=i686-elf-ld
 DYN_FLAGS = -fPIC -fpie -fno-stack-protector -m32 -Wall -O -fstrength-reduce -fomit-frame-pointer -finline-functions -nostdinc -fno-builtin
 
-all_apps_src := $(shell find . -maxdepth 1 -name "*.c" ! -name "test_dynlib.c")
+all_apps_src := $(shell find . -maxdepth 1 -name "*.c" ! -name "test_dynlib.c" ! -name "test_gfx.c")
 apps_bins    = $(patsubst ./%.c, %.bin, $(all_apps_src))
 
 .PHONY: all clean
 
-all: $(apps_bins) test_dynlib.bin
+all: $(apps_bins) test_dynlib.bin test_gfx.bin
 
 clean:
 	rm -f *.o *.bin
@@ -17,6 +17,9 @@ clean:
 
 ../libmath/build/libmath.so:
 	make -C ../libmath
+
+../libgraphics/build/libgraphics.so:
+	make -C ../libgraphics
 
 %.bin: %.c ../libc/build/libc.so
 	@echo "[BUILD-DYN] $@"
@@ -31,3 +34,10 @@ test_dynlib.bin: test_dynlib.c ../libc/build/libc.so ../libmath/build/libmath.so
 	$(CC) -I../libc/src/include -I../libmath/include $(DYN_FLAGS) -c -o test_dynlib.o test_dynlib.c
 	$(LD) -shared -T dynamic.ld -o $@ /tmp/dyn_crt0_test_dynlib.bin.o test_dynlib.o ../libc/build/libc.so ../libmath/build/libmath.so
 	rm -f test_dynlib.o /tmp/dyn_crt0_test_dynlib.bin.o
+
+test_gfx.bin: test_gfx.c ../libc/build/libc.so ../libgraphics/build/libgraphics.so
+	@echo "[BUILD-DYN] $@"
+	nasm -f elf -o /tmp/dyn_crt0_test_gfx.bin.o ../libc/src/crt0.asm
+	$(CC) -I../libc/src/include -I../libgraphics/include $(DYN_FLAGS) -c -o test_gfx.o test_gfx.c
+	$(LD) -shared -T dynamic.ld -o $@ /tmp/dyn_crt0_test_gfx.bin.o test_gfx.o ../libc/build/libc.so ../libgraphics/build/libgraphics.so
+	rm -f test_gfx.o /tmp/dyn_crt0_test_gfx.bin.o

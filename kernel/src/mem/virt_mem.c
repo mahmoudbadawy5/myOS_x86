@@ -129,6 +129,7 @@ void init_paging()
     for (int i = 0; i < 1024; i++)
         kernel_page_dir[i] = PAGE_RW;                                                                                   // Setting all pages to R/W and not present
     kernel_page_dir[KERNEL_PAGE_NUMBER] = ((uint32_t)kernel_page_table - KERNEL_VIRTUAL_BASE) | PAGE_PRESENT | PAGE_RW; // R/W and enabled
+    kernel_page_dir[0] = kernel_page_dir[KERNEL_PAGE_NUMBER]; // Identity map first 4MB (for real-mode callback stub)
     for (int i = 0; i < 1024; i++)
         kernel_page_table[i] = (i << 12) | PAGE_PRESENT | PAGE_RW;
 

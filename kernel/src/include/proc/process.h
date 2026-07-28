@@ -95,6 +95,7 @@ typedef struct pcb {
     uint32_t kernel_stack_alloc;        /* Base of malloc'd kernel stack (for free) */
     uint32_t kernel_stack_bottom;       /* Lowest mapped page of kernel stack */
     char cwd[256];                      /* Current working directory */
+    int has_framebuffer;                /* 1 if process switched to VBE graphics mode */
 } pcb_t;
 
 /* Foreground process group — keyboard sends signals here */

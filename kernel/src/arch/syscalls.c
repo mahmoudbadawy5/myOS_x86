@@ -12,6 +12,8 @@
 #include <mem/malloc.h>
 #include <fs/pipe.h>
 #include <fs/vfs.h>
+#include <vga.h>
+#include <arch/bga.h>
 
 /* Validate that a pointer lies in userspace (below kernel base) */
 static inline int is_user_ptr(const void *p)
@@ -135,6 +137,9 @@ int32_t (*syscalls[MAX_SYSCALLS])(struct regs *) = {
     syscall_setpgid,    /* #30 */
     syscall_waitpid,    /* #31 */
     syscall_sigprocmask,/* #32 */
+    syscall_fb_set_mode, /* #33 */
+    syscall_fb_map,      /* #34 */
+    syscall_fb_restore_text, /* #35 */
 };
 
 void init_syscalls(void)
@@ -270,6 +275,10 @@ int32_t syscall_exit(struct regs *regs)
                 current_process->files_open[i] = 0;
             }
         }
+
+        /* Auto-restore VGA text mode if this process was using graphics */
+        if (current_process->has_framebuffer)
+            vga_restore_text_mode();
 
         /* Kill all live children so they don't become orphans */
         kill_children_of(current_process->pid);
@@ -1225,6 +1234,7 @@ int32_t syscall_munmap(struct regs *regs)
                 unmap_address((void *)(start + i * BLOCK_SIZE));
 
             free(vma);
+
             return 0;
         }
         pprev = &vma->next;
@@ -1447,5 +1457,50 @@ int32_t syscall_sigprocmask(struct regs *regs)
         }
     }
 
+    return 0;
+}
+
+/* ---- Syscall #33: fb_set_mode(width, height, bpp) ---- */
+int32_t syscall_fb_set_mode(struct regs *regs)
+{
+    uint32_t width = regs->ebx;
+    uint32_t height = regs->ecx;
+    uint32_t bpp = regs->edx;
+
+    printf("[FB] set_mode %dx%d bpp=%d\n", width, height, bpp);
+    int ret = bga_set_mode((uint16_t)width, (uint16_t)height, (uint16_t)bpp);
+    return ret;
+}
+
+/* ---- Syscall #34: fb_map() ---- */
+#define FB_MAP_VADDR ((void *)0xFD000000)
+
+int32_t syscall_fb_map(struct regs *regs)
+{
+    (void)regs;
+
+    uint32_t lfb_phys = bga_get_lfb_addr();
+    if (lfb_phys == 0)
+        return -1;
+
+    uint32_t fb_size = 4 * 1024 * 1024;
+    uint32_t pages = (fb_size + BLOCK_SIZE - 1) / BLOCK_SIZE;
+
+    for (uint32_t i = 0; i < pages; i++) {
+        void *virt = (void *)((uint32_t)FB_MAP_VADDR + i * BLOCK_SIZE);
+        void *phys = (void *)(lfb_phys + i * BLOCK_SIZE);
+        map_address_user(virt, phys);
+    }
+
+    current_process->has_framebuffer = 1;
+    return (int32_t)FB_MAP_VADDR;
+}
+
+/* ---- Syscall #35: fb_restore_text() ---- */
+int32_t syscall_fb_restore_text(struct regs *regs)
+{
+    (void)regs;
+    vga_restore_text_mode();
+    current_process->has_framebuffer = 0;
     return 0;
 }

@@ -241,3 +241,24 @@ int sys_sigprocmask(int how, unsigned int *set, unsigned int *oldset)
     __asm__ __volatile__("int $0x80" : "=a"(ret) : "a"(32), "b"(how), "c"(set), "d"(oldset) : "memory", "cc");
     return ret;
 }
+
+int sys_fb_set_mode(int w, int h, int bpp)
+{
+    int ret;
+    __asm__ __volatile__("int $0x80" : "=a"(ret) : "a"(33), "b"(w), "c"(h), "d"(bpp) : "memory", "cc");
+    return ret;
+}
+
+void *sys_fb_map(void)
+{
+    void *ret;
+    __asm__ __volatile__("int $0x80" : "=a"(ret) : "a"(34) : "memory", "cc");
+    return ret;
+}
+
+int sys_fb_restore_text(void)
+{
+    int ret;
+    __asm__ __volatile__("int $0x80" : "=a"(ret) : "a"(35) : "memory", "cc");
+    return ret;
+}

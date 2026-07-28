@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <fs/vfs.h>
 #include <fs/pipe.h>
+#include <vga.h>
 #include <fs/initrd.h>
 #include <arch.h>
 #include <isr.h>
@@ -256,6 +257,7 @@ void create_process(const char *app_path, uint32_t parent_pid, int argc, const c
     pcb->state = PROCESS_STATE_BLOCKED;
     pcb->parent_id = parent_pid;
     pcb->num_children = 0;
+    pcb->has_framebuffer = 0;
     init_process_signals(pcb, NULL);
     pcb->files_open[0] = malloc(sizeof(FILE));
     pcb->files_open[0]->file = stdin_node;
@@ -339,6 +341,8 @@ void schedule(struct regs *r)
 
             /* SIGKILL is unblockable — always kills */
             if (pending & SIG_BIT(SIGKILL)) {
+                if (cur->has_framebuffer)
+                    vga_restore_text_mode();
                 cur->state = PROCESS_STATE_TERMINATED;
                 cur->sig.pending = 0;
                 unblock_parent(cur->pid, 1);
@@ -392,6 +396,8 @@ void schedule(struct regs *r)
                             continue;
                         }
                         /* Default: terminate */
+                        if (cur->has_framebuffer)
+                            vga_restore_text_mode();
                         cur->sig.pending &= ~SIG_BIT(sig);
                         cur->state = PROCESS_STATE_TERMINATED;
                         unblock_parent(cur->pid, 1);

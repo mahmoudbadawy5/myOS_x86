@@ -138,7 +138,7 @@ void fault_handler(struct regs *r)
                    exception_messages[r->int_no]);
             kill_children_of(current_process->pid);
             current_process->state = PROCESS_STATE_TERMINATED;
-            unblock_parent(current_process->pid);
+            unblock_parent(current_process->pid, 1);
             current_process = NULL;
             schedule(r);
             for (;;);
