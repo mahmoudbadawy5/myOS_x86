@@ -10,14 +10,16 @@ apps/%.bin: apps/%.c
 	make -C apps $(patsubst apps/%, %, $@)
 
 initrd: tools/create_initrd.py $(apps) libc/build/libc.so libmath/build/libmath.so libgraphics/build/libgraphics.so
-	@mkdir -p initrd/bin initrd/lib
+	@mkdir -p initrd/bin initrd/lib initrd/fonts
 	@rm -f initrd/*.bin initrd/libc.so
 	@rm -f initrd/bin/*.bin
 	@rm -f initrd/lib/*.so
+	@rm -f initrd/fonts/*.psf
 	@cp apps/*.bin initrd/bin/
 	@cp libc/build/libc.so initrd/lib/
 	@cp libmath/build/libmath.so initrd/lib/
 	@cp libgraphics/build/libgraphics.so initrd/lib/
+	@python tools/gen_font.py initrd/fonts/vga.psf
 	@cp apps/*.txt initrd/ 2>/dev/null || true
 	@cp -r apps/test_folder initrd/ 2>/dev/null || true
 	@python tools/create_initrd.py initrd initrd.img

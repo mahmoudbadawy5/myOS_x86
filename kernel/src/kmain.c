@@ -8,6 +8,7 @@
 #include <irq.h>
 #include <timer.h>
 #include <kbd.h>
+#include <mouse.h>
 #include <stdio.h>
 #include <multiboot.h>
 #include <mem/phys_mem.h>
@@ -292,6 +293,10 @@ void kmain(unsigned long magic, multiboot_info_t *mbd)
 
     printf("Initializing Keyboard:\t[");
     keyboard_install();
+    printf("\x1b\x02OK\x1b\x0F]\t\n");
+
+    printf("Initializing Mouse:\t[");
+    mouse_install();
     printf("\x1b\x02OK\x1b\x0F]\t\n");
 
     printf("Initializing Syscalls:\t[");

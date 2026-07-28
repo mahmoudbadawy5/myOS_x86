@@ -7,7 +7,7 @@ apps_bins    = $(patsubst ./%.c, %.bin, $(all_apps_src))
 
 .PHONY: all clean
 
-all: $(apps_bins) test_dynlib.bin test_gfx.bin
+all: $(apps_bins) test_dynlib.bin test_gfx.bin test_mouse.bin
 
 clean:
 	rm -f *.o *.bin
@@ -41,3 +41,10 @@ test_gfx.bin: test_gfx.c ../libc/build/libc.so ../libgraphics/build/libgraphics.
 	$(CC) -I../libc/src/include -I../libgraphics/include $(DYN_FLAGS) -c -o test_gfx.o test_gfx.c
 	$(LD) -shared -T dynamic.ld -o $@ /tmp/dyn_crt0_test_gfx.bin.o test_gfx.o ../libc/build/libc.so ../libgraphics/build/libgraphics.so
 	rm -f test_gfx.o /tmp/dyn_crt0_test_gfx.bin.o
+
+test_mouse.bin: test_mouse.c ../libc/build/libc.so ../libgraphics/build/libgraphics.so
+	@echo "[BUILD-DYN] $@"
+	nasm -f elf -o /tmp/dyn_crt0_test_mouse.bin.o ../libc/src/crt0.asm
+	$(CC) -I../libc/src/include -I../libgraphics/include $(DYN_FLAGS) -c -o test_mouse.o test_mouse.c
+	$(LD) -shared -T dynamic.ld -o $@ /tmp/dyn_crt0_test_mouse.bin.o test_mouse.o ../libc/build/libc.so ../libgraphics/build/libgraphics.so
+	rm -f test_mouse.o /tmp/dyn_crt0_test_mouse.bin.o

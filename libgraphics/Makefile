@@ -9,10 +9,10 @@ all: build/libgraphics.so
 clean:
 	@rm -rf build
 
-build/libgraphics.so: build/graphics.o
+build/libgraphics.so: build/graphics.o build/font.o
 	@echo "[LD-SO] $@"
 	@mkdir -p build
-	@$(LD) -shared -soname libgraphics.so -m elf_i386 -o $@ $<
+	@$(LD) -shared -soname libgraphics.so -m elf_i386 -o $@ $^
 
 build/%.o : src/%.c
 	@echo "[CPP-PIC] $@"

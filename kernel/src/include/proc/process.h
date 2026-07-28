@@ -96,6 +96,8 @@ typedef struct pcb {
     uint32_t kernel_stack_bottom;       /* Lowest mapped page of kernel stack */
     char cwd[256];                      /* Current working directory */
     int has_framebuffer;                /* 1 if process switched to VBE graphics mode */
+    uint32_t wake_tick;                 /* Tick at which a sleeping process wakes up */
+    struct pcb *sleep_next;             /* Next process in the sleep queue (sorted by wake_tick) */
 } pcb_t;
 
 /* Foreground process group — keyboard sends signals here */
@@ -118,6 +120,10 @@ pcb_t *fork_process(pcb_t *parent, struct regs *regs);
 
 void init_signal_trampoline(void);
 void map_signal_trampoline(uint32_t *page_dir);
+
+/* Sleep queue — sorted linked list of processes blocked in sleep() */
+void sleep_enqueue(pcb_t *proc, uint32_t wake_tick);
+void sleep_check_wakeup(uint32_t current_ticks);
 
 extern pcb_t *current_process;
 extern pcb_t process_table[];

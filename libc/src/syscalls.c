@@ -262,3 +262,10 @@ int sys_fb_restore_text(void)
     __asm__ __volatile__("int $0x80" : "=a"(ret) : "a"(35) : "memory", "cc");
     return ret;
 }
+
+int sys_sleep(unsigned int seconds)
+{
+    int ret;
+    __asm__ __volatile__("int $0x80" : "=a"(ret) : "a"(36), "b"(seconds) : "memory", "cc");
+    return ret;
+}

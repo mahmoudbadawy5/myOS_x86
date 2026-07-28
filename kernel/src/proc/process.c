@@ -785,3 +785,36 @@ void unblock_parent(uint32_t child_pid, int cleanup)
             process_cleanup_child(child);
     }
 }
+
+/* ---- Sleep queue ---- */
+static pcb_t *sleep_queue = NULL; /* sorted by wake_tick ascending */
+
+void sleep_enqueue(pcb_t *proc, uint32_t wake_tick)
+{
+    proc->wake_tick = wake_tick;
+    proc->sleep_next = NULL;
+
+    /* Insert sorted by wake_tick */
+    if (!sleep_queue || wake_tick < sleep_queue->wake_tick) {
+        proc->sleep_next = sleep_queue;
+        sleep_queue = proc;
+        return;
+    }
+
+    pcb_t *cur = sleep_queue;
+    while (cur->sleep_next && cur->sleep_next->wake_tick <= wake_tick)
+        cur = cur->sleep_next;
+    proc->sleep_next = cur->sleep_next;
+    cur->sleep_next = proc;
+}
+
+void sleep_check_wakeup(uint32_t current_ticks)
+{
+    while (sleep_queue && current_ticks >= sleep_queue->wake_tick) {
+        pcb_t *proc = sleep_queue;
+        sleep_queue = proc->sleep_next;
+        proc->sleep_next = NULL;
+        if (proc->state == PROCESS_STATE_BLOCKED)
+            proc->state = PROCESS_STATE_READY;
+    }
+}

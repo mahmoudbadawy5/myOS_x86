@@ -39,5 +39,6 @@ int sys_sigprocmask(int how, unsigned int *set, unsigned int *oldset);
 int sys_fb_set_mode(int w, int h, int bpp);
 void *sys_fb_map(void);
 int sys_fb_restore_text(void);
+int sys_sleep(unsigned int seconds);
 
 #endif

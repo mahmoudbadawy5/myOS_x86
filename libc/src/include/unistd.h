@@ -78,4 +78,7 @@ int fb_set_mode(int w, int h, int bpp);
 void *fb_map(void);
 int fb_restore_text(void);
 
+/* Sleep */
+unsigned int sleep(unsigned int seconds);
+
 #endif

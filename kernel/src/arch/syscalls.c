@@ -140,6 +140,7 @@ int32_t (*syscalls[MAX_SYSCALLS])(struct regs *) = {
     syscall_fb_set_mode, /* #33 */
     syscall_fb_map,      /* #34 */
     syscall_fb_restore_text, /* #35 */
+    syscall_sleep,           /* #36 */
 };
 
 void init_syscalls(void)
@@ -1502,5 +1503,22 @@ int32_t syscall_fb_restore_text(struct regs *regs)
     (void)regs;
     vga_restore_text_mode();
     current_process->has_framebuffer = 0;
+    return 0;
+}
+
+/* ---- Syscall #36: sleep(seconds) ---- */
+extern int ticks;
+#define PIT_FREQ_HZ 18
+
+int32_t syscall_sleep(struct regs *regs)
+{
+    uint32_t seconds = regs->ebx;
+    if (seconds == 0)
+        return 0;
+
+    uint32_t wake_tick = ticks + seconds * PIT_FREQ_HZ;
+    current_process->state = PROCESS_STATE_BLOCKED;
+    sleep_enqueue(current_process, wake_tick);
+    schedule(regs);
     return 0;
 }
